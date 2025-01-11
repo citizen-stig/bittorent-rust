@@ -1,6 +1,9 @@
 [package]
 name = "bittoren-rust"
+description = "Simple implementation of bittorennt client from scratch"
 version = "0.1.0"
 edition = "2021"
+authors = ["Nikolai Golub <nikolay.v.golub@gmail.com>"]
+license = "MIT OR Apache-2.0"
 
 [dependencies]
