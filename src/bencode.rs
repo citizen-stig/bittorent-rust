@@ -120,6 +120,7 @@ impl<'de> de::Deserializer<'de> for BencodeDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        // Next: start here 
         todo!()
     }
 
@@ -147,6 +148,13 @@ impl<'de> de::Deserializer<'de> for BencodeDeserializer<'de> {
 mod tests {
     use super::*;
     use serde::Deserialize;
+
+    fn from_bencode<'a, T>(deserializer: BencodeDeserializer<'a>) -> Result<T, BencodeError>
+    where
+        T: Deserialize<'a>,
+    {
+        T::deserialize(deserializer)
+    }
 
     #[test]
     fn integers() {
@@ -197,5 +205,23 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn byte_strings() {
+        let data = b"7:bencode";
+        let deserializer = BencodeDeserializer::new(&data[..]);
+        let result: Vec<u8> = from_bencode(deserializer).unwrap();
+
+        assert_eq!(result, b"bencode".to_vec());
+    }
+
+    #[test]
+    fn list() {
+        let data = b"l1e";
+        let deserializer = BencodeDeserializer::new(&data[..]);
+        let result: Vec<i64> = from_bencode(deserializer).unwrap();
+
+        assert_eq!(result, vec![1]);
     }
 }
