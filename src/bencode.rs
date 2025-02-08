@@ -1,6 +1,6 @@
 //! Implementation of bencode
 
-use serde::de::{Error, Visitor};
+use serde::de::Visitor;
 use serde::{de, forward_to_deserialize_any};
 use std::fmt::Display;
 // use serde::Deserialize;
@@ -24,6 +24,7 @@ pub enum BencodeError {
     #[error("cannot parse int {0}")]
     CannotParseInteger(#[from] std::num::ParseIntError),
     #[error("custom {0}")]
+    // TODO: Cow?
     Custom(String),
 }
 
@@ -47,14 +48,14 @@ impl<'de> de::Deserializer<'de> for BencodeDeserializer<'de> {
 
     forward_to_deserialize_any! {
         bool i8 i16 i32 u8 u16 u32 u64 f32 f64 char str
-        string bytes byte_buf option unit unit_struct
+        bytes byte_buf option unit unit_struct
         newtype_struct tuple_struct tuple enum
         identifier ignored_any
     }
 
     fn deserialize_any<V>(
         self,
-        _: V,
+        v: V,
     ) -> std::result::Result<
         <V as serde::de::Visitor<'de>>::Value,
         <Self as serde::Deserializer<'de>>::Error,
@@ -62,15 +63,16 @@ impl<'de> de::Deserializer<'de> for BencodeDeserializer<'de> {
     where
         V: serde::de::Visitor<'de>,
     {
+        println!("DESERIALIZE ANY: {}", self.pos);
         match self.input.get(self.pos) {
-            None => Err(BencodeError::custom("end of input")),
-            Some(&INT_START) => {
-                println!("INT!");
-                Err(BencodeError::custom("not supported"))
-            }
-            Some(&LIST) => Err(BencodeError::custom("not supported")),
-            Some(&DICT) => Err(BencodeError::custom("not supported")),
-            Some(_) => Err(BencodeError::custom("not supported")),
+            None => Err(BencodeError::Custom("end of input".to_string())),
+            Some(&INT_START) => self.deserialize_i64(v),
+            Some(&LIST) => Err(BencodeError::Custom("list not supported".to_string())),
+            Some(&DICT) => Err(BencodeError::Custom("dict not supported".to_string())),
+            Some(b'0'..=b'9') => Err(BencodeError::Custom(
+                "byte string not supported".to_string(),
+            )),
+            Some(_) => Err(BencodeError::Custom("other not supported".to_string())),
         }
     }
 
@@ -116,19 +118,64 @@ impl<'de> de::Deserializer<'de> for BencodeDeserializer<'de> {
         visitor.visit_i64(output)
     }
 
+    // deserialize_str ??
+
+    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        // "1" without
+        if self
+            .input
+            .len()
+            .checked_sub(self.pos.saturating_add(0))
+            .is_none()
+        {
+            return Err(BencodeError::UnexpectedEof);
+        }
+
+        let colon_index = match self.input[self.pos..].iter().position(|&x| x == b':') {
+            Some(index) => self.pos + index,
+            None => return Err(BencodeError::Custom("':' not found".to_string())),
+        };
+
+        let len_slice = &self.input[self.pos..colon_index];
+
+        for digit in len_slice {
+            if !digit.is_ascii_digit() {
+                return Err(BencodeError::Custom(
+                    "Invalid digit specification".to_string(),
+                ));
+            }
+        }
+
+        let len_s = unsafe { std::str::from_utf8_unchecked(len_slice) };
+
+        let length: usize = len_s.parse()?;
+        if colon_index + 1 + length > self.input.len() {
+            return Err(BencodeError::UnexpectedEof);
+        }
+
+        let string_slice = &self.input[colon_index + 1..colon_index + 1 + length];
+        // Nasty clone
+        let output =
+            std::str::from_utf8(string_slice).map_err(|e| BencodeError::Custom(e.to_string()))?;
+        visitor.visit_str(output)
+    }
+
     fn deserialize_seq<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        // Next: start here 
-        todo!()
+        // Next: start here
+        todo!("des seq")
     }
 
     fn deserialize_map<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        todo!()
+        todo!("des map")
     }
 
     fn deserialize_struct<V>(
@@ -140,7 +187,7 @@ impl<'de> de::Deserializer<'de> for BencodeDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        todo!()
+        todo!("des struct")
     }
 }
 
@@ -209,11 +256,33 @@ mod tests {
 
     #[test]
     fn byte_strings() {
-        let data = b"7:bencode";
-        let deserializer = BencodeDeserializer::new(&data[..]);
-        let result: Vec<u8> = from_bencode(deserializer).unwrap();
+        let cases = vec![
+            (b"1:a".to_vec(), Ok("a".to_string())),
+            (b"7:bencode".to_vec(), Ok("bencode".to_string())),
+            (b"10:abcdefghij".to_vec(), Ok("abcdefghij".to_string())),
+            ("12:привет".as_bytes().to_vec(), Ok("привет".to_string())),
+            (
+                b"100000000:a".to_vec(),
+                Err(BencodeError::Custom("x".to_string())),
+            ),
+        ];
 
-        assert_eq!(result, b"bencode".to_vec());
+        for (input, expected) in cases {
+            let deserializer = BencodeDeserializer::new(&input[..]);
+            let result = String::deserialize(deserializer);
+            let input_pretty = String::from_utf8_lossy(&input);
+            match (&result, expected) {
+                (Ok(actual), Ok(expected)) => {
+                    assert_eq!(actual, &expected, "input: {:?}", input_pretty);
+                }
+                (Err(_), Err(_)) => {
+                    // some errors, fine for now
+                }
+                _ => {
+                    panic!("incorrect result: {:?} for input: {}", result, input_pretty);
+                }
+            }
+        }
     }
 
     #[test]
