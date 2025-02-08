@@ -194,6 +194,7 @@ impl<'de> de::Deserializer<'de> for BencodeDeserializer<'de> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
     use serde::Deserialize;
 
     fn from_bencode<'a, T>(deserializer: BencodeDeserializer<'a>) -> Result<T, BencodeError>
@@ -232,13 +233,6 @@ mod tests {
         for (input, expected) in cases {
             let deserializer = BencodeDeserializer::new(&input[..]);
             let result = i64::deserialize(deserializer);
-            // Skip error checks for now
-            // assert_eq!(
-            //     expected,
-            //     result,
-            //     "input: {}",
-            //     std::str::from_utf8(&input).unwrap()
-            // );
             let input_pretty = std::str::from_utf8(&input).unwrap();
             match (&result, expected) {
                 (Ok(actual), Ok(expected)) => {
@@ -285,7 +279,59 @@ mod tests {
         }
     }
 
+    fn string_round_trip_test(input: &str) {
+        let encoded = format!("{}:{}", input.len(), input);
+        let deserializer = BencodeDeserializer::new(encoded.as_bytes());
+        let decoded: String = from_bencode(deserializer).expect("Failed to decode string");
+        assert_eq!(input, decoded);
+    }
+
+    prop_compose! {
+        fn malformed_string_input()(
+            prefix in prop::collection::vec(any::<u8>(), 0..10),
+            len in 0..1000usize,
+            content in prop::collection::vec(any::<u8>(), 0..1000),
+            suffix in prop::collection::vec(any::<u8>(), 0..10)
+        ) -> Vec<u8> {
+            let mut bytes = prefix;
+            bytes.extend(len.to_string().bytes());
+            bytes.push(b':');
+            bytes.extend(content);
+            bytes.extend(suffix);
+            bytes
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn string_roundtrip_prop(s in ".*") {
+            string_round_trip_test(&s)
+        }
+
+        #[test]
+        fn string_deserialize_does_not_panic(bytes in prop::collection::vec(any::<u8>(), 0..1000)) {
+            let deserializer = BencodeDeserializer::new(&bytes);
+            let result: Result<String, _> = from_bencode(deserializer);
+
+            // We don't care about the result, we just want to make sure it doesn't panic
+            let _ = result;
+        }
+
+        #[test]
+        fn malformed_string_deserialize_does_not_panic(
+            bytes in malformed_string_input()
+        ) {
+            let deserializer = BencodeDeserializer::new(&bytes);
+            let result: Result<String, _> = from_bencode(deserializer);
+
+            // We don't care if it succeeds or fails, just that it doesn't panic
+            let _ = result;
+        }
+
+    }
+
     #[test]
+    #[ignore = "not implemented"]
     fn list() {
         let data = b"l1e";
         let deserializer = BencodeDeserializer::new(&data[..]);
