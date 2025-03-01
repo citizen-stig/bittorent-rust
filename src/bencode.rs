@@ -37,7 +37,7 @@ impl<'de> BencodeDeserializer<'de> {
             return Err(BencodeError::UnexpectedEof);
         }
         if self.input[self.pos] != INT {
-            return Err(BencodeError::Custom("wrong int".to_string()));
+            return Err(BencodeError::Custom(format!("wrong int: {:?}", self)));
         }
         let start_pos = self.pos + 1; // first after "i"
                                       // TODO: check "ie" case
@@ -133,6 +133,31 @@ impl<'de, 'a> serde::de::SeqAccess<'de> for BencodeSeqAccess<'a, 'de> {
     }
 }
 
+impl<'de, 'a> serde::de::MapAccess<'de> for BencodeSeqAccess<'a, 'de> {
+    type Error = BencodeError;
+
+    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
+    where
+        K: DeserializeSeed<'de>
+    {
+        println!("MAP KEY SEED: {:?}", self.de);
+        if self.de.input.get(self.de.pos) == Some(&END) {
+            self.de.pos += 1;
+            return Ok(None);
+        }
+        let key = seed.deserialize(&mut *self.de)?;
+        Ok(Some(key))
+    }
+
+    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error>
+    where
+        V: DeserializeSeed<'de>
+    {
+        println!("MAP VALUE SEED: {:?}", self.de);
+        seed.deserialize(&mut *self.de)
+    }
+}
+
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub enum BencodeError {
     #[error("unexpected end of input")]
@@ -157,7 +182,7 @@ impl serde::de::Error for BencodeError {
 const INT: u8 = 'i' as u8;
 const END: u8 = 'e' as u8;
 const LIST: u8 = 'l' as u8;
-// const DICT: u8 = 'd' as u8;
+const DICT: u8 = 'd' as u8;
 
 impl<'de> de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
     type Error = BencodeError;
@@ -234,11 +259,26 @@ impl<'de> de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
         visitor.visit_seq(seq_access)
     }
 
-    fn deserialize_map<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_map<V>(mut self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        todo!("des map")
+        println!("STARTED DES MAP: {:?}", self);
+        if self
+            .input
+            .len()
+            // 1 for "d" and 1 for "e"
+            .checked_sub(self.pos.saturating_add(2))
+            .is_none()
+        {
+            return Err(BencodeError::UnexpectedEof);
+        }
+        if self.input[self.pos] != DICT {
+            return Err(BencodeError::Custom("wrong dict".to_string()));
+        }
+        self.pos += 1;
+        let seq_access = BencodeSeqAccess { de: &mut self };
+        _visitor.visit_map(seq_access)
     }
 
     fn deserialize_struct<V>(
@@ -256,6 +296,7 @@ impl<'de> de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use super::*;
     use proptest::prelude::*;
     use serde::Deserialize;
@@ -419,5 +460,16 @@ mod tests {
 
         let expected = vec![vec![42, 12], vec![1, 2]];
         assert_eq!(result, expected);
+    }
+
+
+    #[test]
+    fn dict_to_number() {
+        // Keys are byte strings and must appear in lexicographical order.
+        let data = b"d7:meaningi42e4:wakai12ee";
+        let deserializer = BencodeDeserializer::new(&data[..]);
+        let result: HashMap<String, i64>= from_bencode(deserializer).unwrap();
+
+
     }
 }
