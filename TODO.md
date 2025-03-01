@@ -1,6 +1,6 @@
 
  ~ Bencode decoding: learning serde::deserializer
-  - int
+  + int
   - string
   - list
   - dict
