@@ -99,9 +99,13 @@ impl<'de> BencodeDeserializer<'de> {
             return Err(BencodeError::UnexpectedEof);
         }
 
-        let string_slice = &self.input[colon_index + 1..colon_index + 1 + length];
+        let end_index = colon_index + 1 + length;
+        let string_slice = &self.input[colon_index + 1..end_index];
 
-        std::str::from_utf8(string_slice).map_err(|e| BencodeError::Custom(e.to_string()))
+        let s =
+            std::str::from_utf8(string_slice).map_err(|e| BencodeError::Custom(e.to_string()))?;
+        self.pos = end_index;
+        Ok(s)
     }
 }
 
@@ -119,6 +123,7 @@ impl<'de, 'a> serde::de::SeqAccess<'de> for BencodeSeqAccess<'a, 'de> {
     {
         // Check if we’re at list end (e.g. see an 'e' byte or run out of bytes).
         if self.de.input.get(self.de.pos) == Some(&END) {
+            self.de.pos += 1;
             return Ok(None);
         }
 
@@ -210,7 +215,6 @@ impl<'de> de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        println!("START: {:?}", self);
         if self
             .input
             .len()
@@ -399,7 +403,16 @@ mod tests {
     }
 
     #[test]
-    fn list_of_list() {
+    fn list_of_strings() {
+        let data = b"l1:a2:bbe";
+        let deserializer = BencodeDeserializer::new(&data[..]);
+        let result: Vec<String> = from_bencode(deserializer).unwrap();
+
+        assert_eq!(result, vec!["a", "bb"]);
+    }
+
+    #[test]
+    fn list_of_list_of_ints() {
         let data = b"lli42ei12eeli1ei2eee";
         let deserializer = BencodeDeserializer::new(&data[..]);
         let result: Vec<Vec<i64>> = from_bencode(deserializer).unwrap();
