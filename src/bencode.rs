@@ -1,7 +1,7 @@
 //! Implementation of bencode
 
 use serde::de::{DeserializeSeed, Visitor};
-use serde::{de, forward_to_deserialize_any};
+use serde::forward_to_deserialize_any;
 use std::fmt::{Display, Formatter};
 // use serde::Deserialize;
 
@@ -43,7 +43,7 @@ impl<'de> BencodeDeserializer<'de> {
                                       // TODO: check "ie" case
         let mut end_pos = self.pos + 2; //
 
-        // Finding correct end position and check bytes
+        // Finding the correct end position and check bytes
         loop {
             if end_pos >= self.input.len() {
                 return Err(BencodeError::UnexpectedEof);
@@ -57,7 +57,7 @@ impl<'de> BencodeDeserializer<'de> {
             end_pos += 1;
         }
 
-        // SAFETY: CHECKED ALL DIGITS INSIDE LOOP ABOVE
+        // SAFETY: checked all digits inside the loop above
         let s = unsafe { std::str::from_utf8_unchecked(&self.input[start_pos..end_pos]) };
 
         let output: i64 = s.parse()?;
@@ -121,7 +121,7 @@ impl<'de, 'a> serde::de::SeqAccess<'de> for BencodeSeqAccess<'a, 'de> {
     where
         T: DeserializeSeed<'de>,
     {
-        // Check if we’re at list end (e.g. see an 'e' byte or run out of bytes).
+        // Check if we’re at a list end (e.g., see an 'e' byte or run out of bytes).
         if self.de.input.get(self.de.pos) == Some(&END) {
             self.de.pos += 1;
             return Ok(None);
@@ -138,9 +138,8 @@ impl<'de, 'a> serde::de::MapAccess<'de> for BencodeSeqAccess<'a, 'de> {
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
     where
-        K: DeserializeSeed<'de>
+        K: DeserializeSeed<'de>,
     {
-        println!("MAP KEY SEED: {:?}", self.de);
         if self.de.input.get(self.de.pos) == Some(&END) {
             self.de.pos += 1;
             return Ok(None);
@@ -151,9 +150,8 @@ impl<'de, 'a> serde::de::MapAccess<'de> for BencodeSeqAccess<'a, 'de> {
 
     fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error>
     where
-        V: DeserializeSeed<'de>
+        V: DeserializeSeed<'de>,
     {
-        println!("MAP VALUE SEED: {:?}", self.de);
         seed.deserialize(&mut *self.de)
     }
 }
@@ -174,7 +172,6 @@ impl serde::de::Error for BencodeError {
     where
         T: Display,
     {
-        println!("MSG: {}", _msg);
         serde::de::Error::missing_field("x")
     }
 }
@@ -184,7 +181,7 @@ const END: u8 = 'e' as u8;
 const LIST: u8 = 'l' as u8;
 const DICT: u8 = 'd' as u8;
 
-impl<'de> de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
+impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
     type Error = BencodeError;
 
     forward_to_deserialize_any! {
@@ -196,26 +193,19 @@ impl<'de> de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
 
     fn deserialize_any<V>(
         self,
-        _v: V,
-    ) -> std::result::Result<
-        <V as serde::de::Visitor<'de>>::Value,
-        <Self as serde::Deserializer<'de>>::Error,
-    >
+        v: V,
+    ) -> Result<<V as Visitor<'de>>::Value, <Self as serde::Deserializer<'de>>::Error>
     where
-        V: serde::de::Visitor<'de>,
+        V: Visitor<'de>,
     {
-        println!("DESERIALIZE ANY: {}", self.pos);
-        todo!()
-        // match self.input.get(self.pos) {
-        //     None => Err(BencodeError::Custom("end of input".to_string())),
-        //     Some(&INT) => self.deserialize_i64(v),
-        //     Some(&LIST) => Err(BencodeError::Custom("list not supported".to_string())),
-        //     Some(&DICT) => Err(BencodeError::Custom("dict not supported".to_string())),
-        //     Some(b'0'..=b'9') => Err(BencodeError::Custom(
-        //         "byte string not supported".to_string(),
-        //     )),
-        //     Some(_) => Err(BencodeError::Custom("other not supported".to_string())),
-        // }
+        match self.input.get(self.pos) {
+            None => Err(BencodeError::Custom("end of input".to_string())),
+            Some(&INT) => self.deserialize_i64(v),
+            Some(&LIST) => self.deserialize_seq(v),
+            Some(&DICT) => self.deserialize_map(v),
+            Some(b'0'..=b'9') => self.deserialize_string(v),
+            Some(_) => Err(BencodeError::Custom("other not supported".to_string())),
+        }
     }
 
     fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -226,8 +216,7 @@ impl<'de> de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
         visitor.visit_i64(output)
     }
 
-    // deserialize_str ??
-
+    // TODO: deserialize_str ??
     fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
@@ -259,11 +248,10 @@ impl<'de> de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
         visitor.visit_seq(seq_access)
     }
 
-    fn deserialize_map<V>(mut self, _visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_map<V>(mut self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        println!("STARTED DES MAP: {:?}", self);
         if self
             .input
             .len()
@@ -278,28 +266,28 @@ impl<'de> de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
         }
         self.pos += 1;
         let seq_access = BencodeSeqAccess { de: &mut self };
-        _visitor.visit_map(seq_access)
+        visitor.visit_map(seq_access)
     }
 
     fn deserialize_struct<V>(
         self,
         _name: &'static str,
         _fields: &'static [&'static str],
-        _visitor: V,
+        visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        todo!("des struct")
+        self.deserialize_map(visitor)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
     use super::*;
     use proptest::prelude::*;
     use serde::Deserialize;
+    use std::collections::HashMap;
 
     fn from_bencode<'a, T>(mut deserializer: BencodeDeserializer<'a>) -> Result<T, BencodeError>
     where
@@ -462,14 +450,44 @@ mod tests {
         assert_eq!(result, expected);
     }
 
-
     #[test]
     fn dict_to_number() {
         // Keys are byte strings and must appear in lexicographical order.
         let data = b"d7:meaningi42e4:wakai12ee";
         let deserializer = BencodeDeserializer::new(&data[..]);
-        let result: HashMap<String, i64>= from_bencode(deserializer).unwrap();
+        let result: HashMap<String, i64> = from_bencode(deserializer).unwrap();
 
+        let mut keys = result.keys().cloned().collect::<Vec<_>>();
+        keys.sort();
+        assert_eq!(keys, vec!["meaning".to_string(), "waka".to_string()]);
+        assert_eq!(result["meaning"], 42);
+        assert_eq!(result["waka"], 12);
+    }
 
+    #[test]
+    fn dict_to_list_of_numbers() {
+        let data = b"d3:keyli1ei2ei3eee";
+        let deserializer = BencodeDeserializer::new(&data[..]);
+        let result: HashMap<String, Vec<i64>> = from_bencode(deserializer).unwrap();
+        assert_eq!(result["key"], vec![1, 2, 3]);
+    }
+
+    #[derive(Debug, serde::Deserialize)]
+    struct Example {
+        a: i64,
+        b: String,
+        c: Vec<i64>,
+    }
+
+    #[test]
+    fn deserialize_struct() {
+        let bencode_bytes = b"d1:ai42e1:b5:hello1:cli1ei2ei3eee";
+
+        let deserializer = BencodeDeserializer::new(bencode_bytes);
+
+        let example: Example = from_bencode(deserializer).unwrap();
+        assert_eq!(example.a, 42);
+        assert_eq!(example.b, "hello");
+        assert_eq!(example.c, vec![1, 2, 3]);
     }
 }

@@ -3,7 +3,7 @@
   + int
   + string
   + list
-  - dict
+  + dict
   - No allocating errors
   - json based mixed values
  - Parsing torrent files
