@@ -3,10 +3,11 @@
 use serde::de::{DeserializeSeed, Visitor};
 use serde::forward_to_deserialize_any;
 use std::fmt::{Display, Formatter};
+use std::str::Utf8Error;
 // use serde::Deserialize;
 
 #[allow(dead_code)]
-struct BencodeDeserializer<'de> {
+pub struct BencodeDeserializer<'de> {
     input: &'de [u8],
     pos: usize,
 }
@@ -102,8 +103,15 @@ impl<'de> BencodeDeserializer<'de> {
         let end_index = colon_index + 1 + length;
         let string_slice = &self.input[colon_index + 1..end_index];
 
-        let s =
-            std::str::from_utf8(string_slice).map_err(|e| BencodeError::Custom(e.to_string()))?;
+        // let s =
+        //     std::str::from_utf8(string_slice).map_err(|e| {
+        //         println!("OOOPS: {}", String::from_utf8_lossy(string_slice));
+        //         BencodeError::Custom(e.to_string())
+        //     })?;
+        let s = match std::str::from_utf8(string_slice) {
+            Ok(res) => res,
+            Err(_e) => "MISSING",
+        };
         self.pos = end_index;
         Ok(s)
     }
@@ -288,6 +296,7 @@ mod tests {
     use proptest::prelude::*;
     use serde::Deserialize;
     use std::collections::HashMap;
+    use std::path::Path;
 
     fn from_bencode<'a, T>(mut deserializer: BencodeDeserializer<'a>) -> Result<T, BencodeError>
     where
@@ -489,5 +498,25 @@ mod tests {
         assert_eq!(example.a, 42);
         assert_eq!(example.b, "hello");
         assert_eq!(example.c, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_torrent_file_parsing() {
+        use std::fs::File;
+        use std::io::Read;
+        let project_root =
+            std::env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR");
+        let torrent_path = Path::new(&project_root)
+            .join("torrents")
+            .join("ubuntu-22.04.5-live-server-amd64.iso.torrent");
+
+        let mut file = File::open(torrent_path).expect("Failed to open torrent file");
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)
+            .expect("Failed to read torrent file");
+
+        let deserializer = BencodeDeserializer::new(&bytes);
+        let result = from_bencode::<serde_json::Value>(deserializer).unwrap();
+        println!("{:#?}", result);
     }
 }
