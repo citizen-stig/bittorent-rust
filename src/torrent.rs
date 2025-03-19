@@ -17,7 +17,7 @@ pub struct MetaInfo {
     piece_length: usize,
     // pieces: &'a [u8],
     // TODO: Byte string
-    // pieces: Vec<u8>,
+    pieces: Vec<u8>,
 }
 
 #[cfg(test)]
