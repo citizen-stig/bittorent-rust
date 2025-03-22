@@ -8,7 +8,7 @@ pub struct BencodeDeserializer<'de> {
     stack_depth: usize,
 }
 
-impl<'de> std::fmt::Debug for BencodeDeserializer<'de> {
+impl std::fmt::Debug for BencodeDeserializer<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -19,10 +19,10 @@ impl<'de> std::fmt::Debug for BencodeDeserializer<'de> {
     }
 }
 
-pub(crate) const INT: u8 = 'i' as u8;
-pub(crate) const END: u8 = 'e' as u8;
-pub(crate) const LIST: u8 = 'l' as u8;
-pub(crate) const DICT: u8 = 'd' as u8;
+pub(crate) const INT: u8 = b'i';
+pub(crate) const END: u8 = b'e';
+pub(crate) const LIST: u8 = b'l';
+pub(crate) const DICT: u8 = b'd';
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BencodeType {
