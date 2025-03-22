@@ -7,7 +7,7 @@ authors = ["Nikolai Golub <nikolay.v.golub@gmail.com>"]
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-serde = { version = "1.0" }
+serde = { version = "1.0", features = ["derive"] }
 thiserror = { version = "2.0" }
 
 [dev-dependencies]

@@ -1,4 +1,9 @@
 //! Implementation of bencode
+//!
+
+mod core;
+mod deser;
+mod error;
 
 use serde::de::{DeserializeSeed, Visitor};
 use serde::forward_to_deserialize_any;
