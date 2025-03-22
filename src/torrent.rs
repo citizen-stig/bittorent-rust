@@ -23,6 +23,7 @@ pub struct MetaInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bencode::BencodeDeserializer;
     use serde::Deserialize;
     use std::path::Path;
 
@@ -41,7 +42,7 @@ mod tests {
         file.read_to_end(&mut bytes)
             .expect("Failed to read torrent file");
 
-        let mut deserializer = crate::bencode::BencodeDeserializer::new(&bytes);
+        let mut deserializer = BencodeDeserializer::new(&bytes);
         let result = TorrentFile::deserialize(&mut deserializer).unwrap();
         println!("{:#?}", result);
     }
