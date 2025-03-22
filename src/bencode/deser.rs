@@ -1,7 +1,6 @@
 use crate::bencode::core::{BencodeType, DICT, END, INT, LIST};
 use crate::bencode::{BencodeDeserializer, BencodeError};
 use serde::de::{DeserializeSeed, Visitor};
-use serde::forward_to_deserialize_any;
 
 #[derive(Debug)]
 struct BencodeSeqAccess<'de, 'a> {
@@ -53,12 +52,12 @@ impl<'de> serde::de::MapAccess<'de> for BencodeSeqAccess<'de, '_> {
 impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
     type Error = BencodeError;
 
-    forward_to_deserialize_any! {
-        bool i8 i16 i32 u8 u16 u32 u64 f32 f64 char byte_buf
-        option unit unit_struct
-        newtype_struct tuple_struct tuple enum
-        identifier ignored_any
-    }
+    // forward_to_deserialize_any! {
+    //     bool i8 i16 i32 u8 u16 u32 u64 f32 f64 char
+    //     option unit unit_struct
+    //     newtype_struct tuple_struct tuple enum
+    //     identifier ignored_any
+    // }
 
     fn deserialize_any<V>(
         self,
@@ -83,11 +82,90 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
         }
     }
 
+    fn deserialize_bool<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        todo!()
+    }
+
+    fn deserialize_i8<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        todo!()
+    }
+
+    fn deserialize_i16<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        todo!()
+    }
+
+    fn deserialize_i32<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        todo!()
+    }
+
     fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
         visitor.visit_i64(self.parse_integer()?)
+    }
+
+    fn deserialize_u8<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        todo!()
+    }
+
+    fn deserialize_u16<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        todo!()
+    }
+
+    fn deserialize_u32<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        todo!()
+    }
+
+    fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        // visitor.visit_i64(self.parse_integer()?)
+        let integer = self.parse_integer()?.try_into().unwrap();
+        visitor.visit_u64(integer)
+    }
+
+    fn deserialize_f32<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        todo!()
+    }
+
+    fn deserialize_f64<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        todo!()
+    }
+
+    fn deserialize_char<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        todo!()
     }
 
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -112,13 +190,49 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
         visitor.visit_bytes(self.parse_bytes()?)
     }
 
-    // fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    // where
-    //     V: Visitor<'de>,
-    // {
-    //     let output = self.parse_bytes()?;
-    //     visitor.visit_byte_buf(output.to_vec())
-    // }
+    fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        let output = self.parse_bytes()?;
+        visitor.visit_byte_buf(output.to_vec())
+    }
+
+    fn deserialize_option<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        todo!()
+    }
+
+    fn deserialize_unit<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        todo!()
+    }
+
+    fn deserialize_unit_struct<V>(
+        self,
+        _name: &'static str,
+        _visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        todo!()
+    }
+
+    fn deserialize_newtype_struct<V>(
+        self,
+        _name: &'static str,
+        _visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        todo!()
+    }
 
     fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
@@ -147,6 +261,25 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
         let seq_access = BencodeSeqAccess { de: self };
 
         visitor.visit_seq(seq_access)
+    }
+
+    fn deserialize_tuple<V>(self, _len: usize, _visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        todo!()
+    }
+
+    fn deserialize_tuple_struct<V>(
+        self,
+        _name: &'static str,
+        _len: usize,
+        _visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        todo!()
     }
 
     fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -183,5 +316,47 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
         V: Visitor<'de>,
     {
         self.deserialize_map(visitor)
+    }
+
+    fn deserialize_enum<V>(
+        self,
+        _name: &'static str,
+        _variants: &'static [&'static str],
+        _visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        todo!()
+    }
+
+    fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        // // In Bencode, dictionary keys are byte strings
+        // let iden= self.parse_str()?;
+        // visitor.visit_str(iden)
+        let bytes = self.parse_bytes()?;
+
+        // Try to convert the bytes to a string
+        match std::str::from_utf8(bytes) {
+            Ok(s) => visitor.visit_str(s),
+            Err(err) => {
+                println!("OOOPS: {:?}", err);
+                visitor.visit_bytes(bytes)
+            }
+        }
+    }
+
+    fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        // Skip the current value, whatever it is
+        self.skip_value()?;
+
+        // Call visit_unit since we're ignoring the actual value
+        visitor.visit_unit()
     }
 }

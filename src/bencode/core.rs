@@ -93,7 +93,7 @@ impl<'de> BencodeDeserializer<'de> {
         // SAFETY: checked all digits inside the loop above
         let s = unsafe { std::str::from_utf8_unchecked(&self.input[start_pos..end_pos]) };
 
-        if s.len()> 1 && s.starts_with('0') {
+        if s.len() > 1 && s.starts_with('0') {
             return Err(BencodeError::InvalidIntegerLeadingZero);
         }
 
@@ -148,6 +148,56 @@ impl<'de> BencodeDeserializer<'de> {
         //     Err(_e) => "MISSING",
         // };
         Ok(s)
+    }
+
+    // Advancing iterator without actual parsing
+    pub(crate) fn skip_value(&mut self) -> Result<(), BencodeError> {
+        match self.input.get(self.pos) {
+            None => Err(BencodeError::UnexpectedEof),
+            Some(&INT) => {
+                let _ = self.parse_integer()?;
+                Ok(())
+            }
+            Some(&LIST) => {
+                self.pos += 1; // Skip 'l'
+                while self.pos < self.input.len() && self.input[self.pos] != END {
+                    self.skip_value()?;
+                }
+                if self.pos < self.input.len() {
+                    self.pos += 1; // Skip 'e'
+                    Ok(())
+                } else {
+                    Err(BencodeError::UnexpectedEof)
+                }
+            }
+            Some(&DICT) => {
+                self.pos += 1; // Skip 'd'
+                while self.pos < self.input.len() && self.input[self.pos] != END {
+                    // Skip key
+                    self.skip_value()?;
+                    // Skip value
+                    if self.pos < self.input.len() {
+                        self.skip_value()?;
+                    } else {
+                        return Err(BencodeError::UnexpectedEof);
+                    }
+                }
+                if self.pos < self.input.len() {
+                    self.pos += 1; // Skip 'e'
+                    Ok(())
+                } else {
+                    Err(BencodeError::UnexpectedEof)
+                }
+            }
+            Some(b'0'..=b'9') => {
+                let _ = self.parse_bytes()?;
+                Ok(())
+            }
+            Some(b) => Err(BencodeError::UnexpectedBencodeType {
+                expected: None,
+                actual: BencodeType::from_byte(*b),
+            }),
+        }
     }
 }
 
