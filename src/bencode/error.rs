@@ -1,4 +1,11 @@
+use crate::bencode::core::BencodeType;
 use std::fmt::Display;
+
+#[derive(Debug, PartialEq)]
+pub enum ReceivedBencodeType {
+    Known(BencodeType),
+    Unknown(char),
+}
 
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub enum BencodeError {
@@ -6,9 +13,19 @@ pub enum BencodeError {
     UnexpectedEof,
     #[error("cannot parse int {0}")]
     CannotParseInteger(#[from] std::num::ParseIntError),
-    #[error("custom {0}")]
-    // TODO: Cow?
-    Custom(String),
+    #[error("len separator (':') is missing")]
+    LenSeparatorMissing,
+    #[error("invalid length declaration, non didit character: {0}")]
+    InvalidLen(char),
+    #[error("Integer contains non digit character: {0}")]
+    InvalidInteger(char),
+    #[error("invalid bencode data: expected {expected:?}, got {actual:?}")]
+    UnexpectedBencodeType {
+        expected: Option<BencodeType>,
+        actual: ReceivedBencodeType,
+    },
+    #[error("cannot parse str: {0}")]
+    InvalidString(#[from] std::str::Utf8Error),
 }
 
 // TODO: Move to serde

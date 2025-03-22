@@ -1,4 +1,4 @@
-use crate::bencode::error::BencodeError;
+use crate::bencode::error::{BencodeError, ReceivedBencodeType};
 use std::fmt::Formatter;
 
 #[allow(dead_code)]
@@ -24,6 +24,26 @@ pub(crate) const END: u8 = 'e' as u8;
 pub(crate) const LIST: u8 = 'l' as u8;
 pub(crate) const DICT: u8 = 'd' as u8;
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum BencodeType {
+    Integer,
+    ByteString,
+    List,
+    Dict,
+}
+
+impl BencodeType {
+    pub fn from_byte(b: u8) -> ReceivedBencodeType {
+        match b {
+            INT => ReceivedBencodeType::Known(BencodeType::Integer),
+            LIST => ReceivedBencodeType::Known(BencodeType::List),
+            DICT => ReceivedBencodeType::Known(BencodeType::Dict),
+            b'0'..=b'9' => ReceivedBencodeType::Known(BencodeType::ByteString),
+            _ => ReceivedBencodeType::Unknown(char::from(b)),
+        }
+    }
+}
+
 impl<'de> BencodeDeserializer<'de> {
     pub fn new(input: &'de [u8]) -> Self {
         Self {
@@ -33,6 +53,7 @@ impl<'de> BencodeDeserializer<'de> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn is_consumed(&self) -> bool {
         self.pos == self.input.len()
     }
@@ -47,7 +68,10 @@ impl<'de> BencodeDeserializer<'de> {
             return Err(BencodeError::UnexpectedEof);
         }
         if self.input[self.pos] != INT {
-            return Err(BencodeError::Custom(format!("wrong int: {:?}", self)));
+            return Err(BencodeError::UnexpectedBencodeType {
+                expected: Some(BencodeType::Integer),
+                actual: BencodeType::from_byte(self.input[self.pos]),
+            });
         }
         let start_pos = self.pos + 1; // first after "i"
         let mut end_pos = self.pos + 2; //
@@ -61,7 +85,7 @@ impl<'de> BencodeDeserializer<'de> {
                 break;
             }
             if !self.input[end_pos].is_ascii_digit() {
-                return Err(BencodeError::Custom("not a digit".to_string()));
+                return Err(BencodeError::InvalidInteger(self.input[end_pos].into()));
             }
             end_pos += 1;
         }
@@ -86,15 +110,13 @@ impl<'de> BencodeDeserializer<'de> {
         }
         let colon_index = match self.input[self.pos..].iter().position(|&x| x == b':') {
             Some(index) => self.pos + index,
-            None => return Err(BencodeError::Custom("':' not found".to_string())),
+            None => return Err(BencodeError::LenSeparatorMissing),
         };
         let len_slice = &self.input[self.pos..colon_index];
 
         for digit in len_slice {
             if !digit.is_ascii_digit() {
-                return Err(BencodeError::Custom(
-                    "Invalid digit specification".to_string(),
-                ));
+                return Err(BencodeError::InvalidLen(char::from(*digit)));
             }
         }
 
@@ -115,7 +137,7 @@ impl<'de> BencodeDeserializer<'de> {
 
         let s = std::str::from_utf8(string_slice).map_err(|e| {
             println!("OOOPS: {}", String::from_utf8_lossy(string_slice));
-            BencodeError::Custom(e.to_string())
+            BencodeError::InvalidString(e)
         })?;
         // let s = match std::str::from_utf8(string_slice) {
         //     Ok(res) => res,

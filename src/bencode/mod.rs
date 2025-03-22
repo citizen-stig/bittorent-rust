@@ -6,11 +6,10 @@ mod deser;
 mod error;
 
 pub use crate::bencode::core::BencodeDeserializer;
-use crate::bencode::core::{DICT, END, LIST};
+use crate::bencode::core::{BencodeType, DICT, END, INT, LIST};
 pub use crate::bencode::error::BencodeError;
 use serde::de::{DeserializeSeed, Visitor};
 use serde::forward_to_deserialize_any;
-use std::fmt::{Display, Formatter};
 // use serde::Deserialize;
 
 #[derive(Debug)]
@@ -78,16 +77,18 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
         V: Visitor<'de>,
     {
         match self.input.get(self.pos) {
-            None => Err(BencodeError::Custom("end of input".to_string())),
+            None => Err(BencodeError::UnexpectedEof),
             Some(&INT) => self.deserialize_i64(v),
-            // Some(&LIST) => self.deserialize_seq(v),
             Some(&LIST) => self.deserialize_seq(v),
             Some(&DICT) => self.deserialize_map(v),
             // THIS OVERFLOWS
             Some(b'0'..=b'9') => self.deserialize_bytes(v),
             // THIS WORKS:
             // Some(b'0'..=b'9') => self.deserialize_str(v),
-            Some(_) => Err(BencodeError::Custom("other not supported".to_string())),
+            Some(b) => Err(BencodeError::UnexpectedBencodeType {
+                expected: None,
+                actual: BencodeType::from_byte(*b),
+            }),
         }
     }
 
@@ -145,7 +146,10 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
         if self.input[self.pos].is_ascii_digit() {
             return self.deserialize_bytes(visitor);
         } else if self.input[self.pos] != LIST {
-            return Err(BencodeError::Custom("wrong list".to_string()));
+            return Err(BencodeError::UnexpectedBencodeType {
+                expected: Some(BencodeType::List),
+                actual: BencodeType::from_byte(self.input[self.pos]),
+            });
         }
 
         self.pos += 1;
@@ -168,7 +172,10 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
             return Err(BencodeError::UnexpectedEof);
         }
         if self.input[self.pos] != DICT {
-            return Err(BencodeError::Custom("wrong dict".to_string()));
+            return Err(BencodeError::UnexpectedBencodeType {
+                expected: Some(BencodeType::Dict),
+                actual: BencodeType::from_byte(self.input[self.pos]),
+            });
         }
         self.pos += 1;
         let seq_access = BencodeSeqAccess { de: &mut self };
