@@ -43,38 +43,6 @@ mod tests {
     }
 
     #[test]
-    fn bytes_happy_cases() {
-        let cases = [
-            (&b"1:a"[..], "a".as_bytes()),
-            (&b"4:aaaa"[..], "aaaa".as_bytes()),
-            (&b"7:bencode"[..], "bencode".as_bytes()),
-            (&b"0:"[..], &[]),
-            ("12:привет".as_bytes(), "привет".as_bytes()),
-            (&b"3:\xFF\xFE\xFD"[..], &[0xFF, 0xFE, 0xFD][..]),
-        ];
-        for (data, expected_value) in cases {
-            let mut deserializer = BencodeDeserializer::new(data);
-            test_happy_case::<&[u8]>(&mut deserializer, expected_value);
-        }
-    }
-
-    #[test]
-    fn bytes_error_cases() {
-        let cases = [
-            // TODO: Actual errors
-            (&b"2:a"[..], BencodeError::UnexpectedEof),
-            (&b"1:"[..], BencodeError::UnexpectedEof),
-            (&b"-1:a"[..], BencodeError::UnexpectedEof),
-            (&b"2aa"[..], BencodeError::UnexpectedEof),
-        ];
-
-        for (data, expected_error) in cases {
-            let mut deserializer = BencodeDeserializer::new(data);
-            test_error_case::<&[u8]>(&mut deserializer, expected_error);
-        }
-    }
-
-    #[test]
     fn list_of_integers_happy_cases() {
         let cases = [
             (&b"le"[..], vec![]),

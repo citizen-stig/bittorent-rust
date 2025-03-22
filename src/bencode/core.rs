@@ -93,7 +93,7 @@ impl<'de> BencodeDeserializer<'de> {
         // SAFETY: checked all digits inside the loop above
         let s = unsafe { std::str::from_utf8_unchecked(&self.input[start_pos..end_pos]) };
 
-        if s.starts_with('0') {
+        if s.len()> 1 && s.starts_with('0') {
             return Err(BencodeError::InvalidIntegerLeadingZero);
         }
 
@@ -156,7 +156,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_int_happy_cases() {
+    fn parse_integer_happy_cases() {
         let cases = [
             (&b"i42e"[..], 42),
             (&b"i500e"[..], 500),
@@ -175,7 +175,7 @@ mod tests {
     }
 
     #[test]
-    fn integers_error_cases() {
+    fn parse_integer_error_cases() {
         let invalid_digit_err = "-".parse::<i64>().unwrap_err();
         let cases = [
             (
@@ -213,4 +213,44 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn parse_bytes_happy_cases() {
+        let cases = [
+            (&b"1:a"[..], "a".as_bytes()),
+            (&b"4:aaaa"[..], "aaaa".as_bytes()),
+            (&b"7:bencode"[..], "bencode".as_bytes()),
+            (&b"0:"[..], &[]),
+            ("12:привет".as_bytes(), "привет".as_bytes()),
+            (&b"3:\xFF\xFE\xFD"[..], &[0xFF, 0xFE, 0xFD][..]),
+        ];
+        for (data, expected_value) in cases {
+            let mut deserializer = BencodeDeserializer::new(data);
+            let value = deserializer.parse_bytes().unwrap();
+            assert_eq!(value, expected_value);
+        }
+    }
+
+    #[test]
+    fn parse_bytes_error_cases() {
+        let cases = [
+            (&b"2:a"[..], BencodeError::UnexpectedEof),
+            (&b"1:"[..], BencodeError::UnexpectedEof),
+            (&b"-1:a"[..], BencodeError::InvalidLen('-')),
+            (&b"2aa"[..], BencodeError::LenSeparatorMissing),
+        ];
+
+        for (data, expected_error) in cases {
+            let mut deserializer = BencodeDeserializer::new(data);
+            let err = deserializer.parse_bytes().unwrap_err();
+            assert_eq!(
+                err,
+                expected_error,
+                "Unexpected for input: {}",
+                String::from_utf8_lossy(data)
+            );
+        }
+    }
+
+    // This is where things gets interesting.
 }
