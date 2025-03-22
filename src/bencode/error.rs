@@ -19,6 +19,8 @@ pub enum BencodeError {
     InvalidLen(char),
     #[error("Integer contains non digit character: {0}")]
     InvalidInteger(char),
+    #[error("Integer contains leading zeroes")]
+    InvalidIntegerLeadingZero,
     #[error("invalid bencode data: expected {expected:?}, got {actual:?}")]
     UnexpectedBencodeType {
         expected: Option<BencodeType>,

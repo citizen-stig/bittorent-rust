@@ -43,51 +43,6 @@ mod tests {
     }
 
     #[test]
-    fn integers_happy_cases() {
-        let cases = [
-            (&b"i42e"[..], 42),
-            (&b"i500e"[..], 500),
-            (&b"i0e"[..], 0),
-            (&b"i-1e"[..], -1),
-            (&b"i-3200e"[..], -3200),
-            (&b"i9223372036854775807e"[..], i64::MAX),
-            (&b"i-9223372036854775808e"[..], i64::MIN),
-        ];
-
-        for (data, expected_value) in cases {
-            let mut deserializer = BencodeDeserializer::new(data);
-            test_happy_case(&mut deserializer, expected_value);
-        }
-    }
-
-    #[test]
-    fn integers_error_cases() {
-        let cases = [
-            (
-                &b"i9223372036854775808e"[..],
-                BencodeError::CannotParseInteger(
-                    "92233720368547758080000".parse::<i64>().unwrap_err(),
-                ),
-            ),
-            // TODO: actual errors
-            (&b"i-e"[..], BencodeError::UnexpectedEof),
-            (&b"i-"[..], BencodeError::UnexpectedEof),
-            (&b"i-0"[..], BencodeError::UnexpectedEof),
-            (&b"i1"[..], BencodeError::UnexpectedEof),
-            (&b"ioe"[..], BencodeError::UnexpectedEof),
-            (&b"iq"[..], BencodeError::UnexpectedEof),
-            (&b"ie"[..], BencodeError::UnexpectedEof),
-            // Missing terminator
-            (&b"i10"[..], BencodeError::UnexpectedEof),
-        ];
-
-        for (data, expected_error) in cases {
-            let mut deserializer = BencodeDeserializer::new(data);
-            test_error_case::<i64>(&mut deserializer, expected_error);
-        }
-    }
-
-    #[test]
     fn bytes_happy_cases() {
         let cases = [
             (&b"1:a"[..], "a".as_bytes()),

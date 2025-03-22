@@ -93,6 +93,10 @@ impl<'de> BencodeDeserializer<'de> {
         // SAFETY: checked all digits inside the loop above
         let s = unsafe { std::str::from_utf8_unchecked(&self.input[start_pos..end_pos]) };
 
+        if s.starts_with('0') {
+            return Err(BencodeError::InvalidIntegerLeadingZero);
+        }
+
         let output: i64 = s.parse()?;
         self.pos = end_pos + 1;
         Ok(output)
@@ -144,5 +148,69 @@ impl<'de> BencodeDeserializer<'de> {
         //     Err(_e) => "MISSING",
         // };
         Ok(s)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_int_happy_cases() {
+        let cases = [
+            (&b"i42e"[..], 42),
+            (&b"i500e"[..], 500),
+            (&b"i0e"[..], 0),
+            (&b"i-1e"[..], -1),
+            (&b"i-3200e"[..], -3200),
+            (&b"i9223372036854775807e"[..], i64::MAX),
+            (&b"i-9223372036854775808e"[..], i64::MIN),
+        ];
+
+        for (data, expected_value) in cases {
+            let mut deserializer = BencodeDeserializer::new(data);
+            let value = deserializer.parse_integer().unwrap();
+            assert_eq!(value, expected_value);
+        }
+    }
+
+    #[test]
+    fn integers_error_cases() {
+        let invalid_digit_err = "-".parse::<i64>().unwrap_err();
+        let cases = [
+            (
+                &b"i9223372036854775808e"[..],
+                BencodeError::CannotParseInteger(
+                    "92233720368547758080000".parse::<i64>().unwrap_err(),
+                ),
+            ),
+            (
+                &b"i-e"[..],
+                BencodeError::CannotParseInteger(invalid_digit_err.clone()),
+            ),
+            (&b"i000500e"[..], BencodeError::InvalidIntegerLeadingZero),
+            (&b"i-"[..], BencodeError::UnexpectedEof),
+            (&b"i-0"[..], BencodeError::UnexpectedEof),
+            (&b"i1"[..], BencodeError::UnexpectedEof),
+            (
+                &b"ioe"[..],
+                BencodeError::CannotParseInteger(invalid_digit_err.clone()),
+            ),
+            (&b"iq"[..], BencodeError::UnexpectedEof),
+            (&b"ie"[..], BencodeError::UnexpectedEof),
+            // Missing terminator
+            (&b"i10"[..], BencodeError::UnexpectedEof),
+        ];
+
+        for (data, expected_error) in cases {
+            let mut deserializer = BencodeDeserializer::new(data);
+            let err = deserializer.parse_integer().unwrap_err();
+            assert_eq!(
+                err,
+                expected_error,
+                "Unexpected for input: {}",
+                String::from_utf8_lossy(data)
+            );
+        }
     }
 }
