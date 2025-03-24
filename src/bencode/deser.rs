@@ -7,6 +7,13 @@ struct BencodeSeqAccess<'de, 'a> {
     de: &'a mut BencodeDeserializer<'de>,
 }
 
+// #[derive(thiserror::Error, Debug, PartialEq)]
+// pub enum BencodeDeserializerError {
+//     ParsingError(#[from] BencodeError),
+//     #[error("{0}")]
+//     UnsupportedType(&'static str),
+// }
+
 impl<'de> serde::de::SeqAccess<'de> for BencodeSeqAccess<'de, '_> {
     type Error = BencodeError;
 
@@ -33,11 +40,13 @@ impl<'de> serde::de::MapAccess<'de> for BencodeSeqAccess<'de, '_> {
     where
         K: DeserializeSeed<'de>,
     {
+        println!("DESERIALIZE map access: {}", self.de.pos);
         if self.de.input.get(self.de.pos) == Some(&END) {
             self.de.pos += 1;
             return Ok(None);
         }
         let key = seed.deserialize(&mut *self.de)?;
+        println!("DESERIALIZE map access key: {}", self.de.pos);
         Ok(Some(key))
     }
 
@@ -45,6 +54,7 @@ impl<'de> serde::de::MapAccess<'de> for BencodeSeqAccess<'de, '_> {
     where
         V: DeserializeSeed<'de>,
     {
+        println!("DESERIALIZE next value seed : {}", self.de.pos);
         seed.deserialize(&mut *self.de)
     }
 }
@@ -66,6 +76,7 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        println!("DESERIALIZE ANY: {}", self.pos);
         match self.input.get(self.pos) {
             None => Err(BencodeError::UnexpectedEof),
             Some(&INT) => self.deserialize_i64(v),
@@ -114,6 +125,7 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        println!("DESERIALIZE i64: {}", self.pos);
         visitor.visit_i64(self.parse_integer()?)
     }
 
@@ -138,13 +150,15 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
         todo!()
     }
 
-    fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_u64<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
+        println!("DESERIALIZE u64: {}", self.pos);
+        todo!()
         // visitor.visit_i64(self.parse_integer()?)
-        let integer = self.parse_integer()?.try_into().unwrap();
-        visitor.visit_u64(integer)
+        // let integer = self.parse_integer()?.try_into().unwrap();
+        // visitor.visit_u64(integer)
     }
 
     fn deserialize_f32<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
@@ -286,6 +300,7 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        println!("DESERIALIZE map: {}", self.pos);
         if self
             .input
             .len()
@@ -315,6 +330,7 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        println!("DESERIALIZE struct: {}", self.pos);
         self.deserialize_map(visitor)
     }
 
@@ -337,6 +353,7 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
         // // In Bencode, dictionary keys are byte strings
         // let iden= self.parse_str()?;
         // visitor.visit_str(iden)
+        println!("DESERIALIZE ident: {}", self.pos);
         let bytes = self.parse_bytes()?;
 
         // Try to convert the bytes to a string
@@ -353,6 +370,7 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        println!("DESERIALIZE ignored_any: {}", self.pos);
         // Skip the current value, whatever it is
         self.skip_value()?;
 

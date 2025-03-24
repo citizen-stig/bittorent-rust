@@ -1,4 +1,5 @@
 use crate::bencode::error::{BencodeError, ReceivedBencodeType};
+use std::collections::BTreeMap;
 use std::fmt::Formatter;
 
 #[allow(dead_code)]
@@ -150,6 +151,88 @@ impl<'de> BencodeDeserializer<'de> {
         Ok(s)
     }
 
+    fn get_any(&mut self) -> Result<Bencode, BencodeError> {
+        let item = match self.input.get(self.pos) {
+            None => return Err(BencodeError::UnexpectedEof),
+            Some(&INT) => {
+                let i = self.parse_integer()?;
+                Bencode::Integer(i)
+            }
+            Some(&LIST) => self.get_list()?,
+            Some(&DICT) => self.get_dict()?,
+            Some(b'0'..=b'9') => {
+                let b = self.parse_bytes()?;
+                Bencode::Bytes(b.to_vec())
+            }
+            Some(b) => {
+                return Err(BencodeError::UnexpectedBencodeType {
+                    expected: None,
+                    actual: BencodeType::from_byte(*b),
+                });
+            }
+        };
+        Ok(item)
+    }
+
+    fn get_list(&mut self) -> Result<Bencode, BencodeError> {
+        let mut items = Vec::new();
+        if self
+            .input
+            .len()
+            // 1 for "l" and 1 for "e"
+            .checked_sub(self.pos.saturating_add(2))
+            .is_none()
+        {
+            return Err(BencodeError::UnexpectedEof);
+        }
+
+        if self.input[self.pos] != LIST {
+            return Err(BencodeError::UnexpectedBencodeType {
+                expected: Some(BencodeType::List),
+                actual: BencodeType::from_byte(self.input[self.pos]),
+            });
+        }
+
+        self.pos = self.pos.checked_add(1).expect("Position overflow");
+
+        while self.input.get(self.pos) != Some(&END) {
+            let item = self.get_any()?;
+            items.push(item);
+        }
+        self.pos = self.pos.checked_add(1).expect("Position overflow");
+        Ok(Bencode::List(items))
+    }
+
+    fn get_dict(&mut self) -> Result<Bencode, BencodeError> {
+        let mut map = BTreeMap::new();
+        if self
+            .input
+            .len()
+            // 1 for "d" and 1 for "e"
+            .checked_sub(self.pos.saturating_add(2))
+            .is_none()
+        {
+            return Err(BencodeError::UnexpectedEof);
+        }
+
+        if self.input[self.pos] != DICT {
+            return Err(BencodeError::UnexpectedBencodeType {
+                expected: Some(BencodeType::List),
+                actual: BencodeType::from_byte(self.input[self.pos]),
+            });
+        }
+
+        self.pos = self.pos.checked_add(1).expect("Position overflow");
+
+        while self.input.get(self.pos) != Some(&END) {
+            let key = self.parse_bytes()?;
+            let value = self.get_any()?;
+            map.insert(key.to_vec(), value);
+        }
+
+        Ok(Bencode::Dict(map))
+    }
+
     // Advancing iterator without actual parsing
     pub(crate) fn skip_value(&mut self) -> Result<(), BencodeError> {
         match self.input.get(self.pos) {
@@ -199,6 +282,15 @@ impl<'de> BencodeDeserializer<'de> {
             }),
         }
     }
+}
+
+#[derive(Debug, PartialEq)]
+#[allow(dead_code)]
+enum Bencode {
+    Integer(i64),
+    Bytes(Vec<u8>),
+    List(Vec<Bencode>),
+    Dict(BTreeMap<Vec<u8>, Bencode>),
 }
 
 #[cfg(test)]
@@ -303,4 +395,91 @@ mod tests {
     }
 
     // This is where things gets interesting.
+    #[test]
+    fn parse_list() {
+        let cases = [
+            (&b"le"[..], Bencode::List(vec![])),
+            (
+                &b"li42ei12ee"[..],
+                Bencode::List(vec![Bencode::Integer(42), Bencode::Integer(12)]),
+            ),
+            (
+                &b"li42e1:ae"[..],
+                Bencode::List(vec![Bencode::Integer(42), Bencode::Bytes(vec![b'a'])]),
+            ),
+            // Nested lists
+            (
+                &b"ll3:fooee"[..],
+                Bencode::List(vec![Bencode::List(vec![Bencode::Bytes(b"foo".to_vec())])]),
+            ),
+            (
+                &b"lli42eeli12eee"[..],
+                Bencode::List(vec![
+                    Bencode::List(vec![Bencode::Integer(42)]),
+                    Bencode::List(vec![Bencode::Integer(12)]),
+                ]),
+            ),
+            // List with multiple data types
+            (
+                &b"li42e3:bar4:spami-10ee"[..],
+                Bencode::List(vec![
+                    Bencode::Integer(42),
+                    Bencode::Bytes(b"bar".to_vec()),
+                    Bencode::Bytes(b"spam".to_vec()),
+                    Bencode::Integer(-10),
+                ]),
+            ),
+            // List with empty byte string
+            (&b"l0:e"[..], Bencode::List(vec![Bencode::Bytes(vec![])])),
+            // List with deep nesting
+            (
+                &b"llleee"[..],
+                Bencode::List(vec![Bencode::List(vec![Bencode::List(vec![])])]),
+            ),
+            // List with empty list elements
+            (
+                &b"llelei42ee"[..],
+                Bencode::List(vec![
+                    Bencode::List(vec![]),
+                    Bencode::List(vec![]),
+                    Bencode::Integer(42),
+                ]),
+            ),
+            // List with dictionary
+            (
+                &b"lld3:foo3:baree"[..],
+                Bencode::List(vec![Bencode::List(vec![Bencode::Dict({
+                    let mut map = BTreeMap::new();
+                    map.insert(b"foo".to_vec(), Bencode::Bytes(b"bar".to_vec()));
+                    map
+                })])]),
+            ),
+        ];
+
+        for (input, expected) in cases {
+            let mut deserializer = BencodeDeserializer::new(input);
+            let actual = deserializer.get_list().expect(&format!(
+                "Unexpected error for input: {}, output: {:?}",
+                String::from_utf8_lossy(input),
+                expected,
+            ));
+            assert_eq!(actual, expected);
+        }
+    }
+
+    #[test]
+    fn parse_dict() {
+        let cases = [
+            (&b"de"[..], Bencode::Dict(Default::default())),
+            (
+                &b"d1:ai42ee"[..],
+                Bencode::Dict([(vec![b'a'], Bencode::Integer(42))].into()),
+            ),
+        ];
+        for (input, expected) in cases {
+            let mut deserializer = BencodeDeserializer::new(input);
+            let actual = deserializer.get_dict().unwrap();
+            assert_eq!(actual, expected);
+        }
+    }
 }
