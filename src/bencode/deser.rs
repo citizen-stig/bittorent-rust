@@ -88,7 +88,7 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
             // Some(b'0'..=b'9') => self.deserialize_str(v),
             Some(b) => Err(BencodeError::UnexpectedBencodeType {
                 expected: None,
-                actual: BencodeType::from_byte(*b),
+                actual: BencodeType::from_byte_to_received(*b),
             }),
         }
     }
@@ -267,7 +267,7 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
         } else if self.input[self.pos] != LIST {
             return Err(BencodeError::UnexpectedBencodeType {
                 expected: Some(BencodeType::List),
-                actual: BencodeType::from_byte(self.input[self.pos]),
+                actual: BencodeType::from_byte_to_received(self.input[self.pos]),
             });
         }
 
@@ -313,7 +313,7 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
         if self.input[self.pos] != DICT {
             return Err(BencodeError::UnexpectedBencodeType {
                 expected: Some(BencodeType::Dict),
-                actual: BencodeType::from_byte(self.input[self.pos]),
+                actual: BencodeType::from_byte_to_received(self.input[self.pos]),
             });
         }
         self.pos += 1;

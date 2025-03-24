@@ -7,6 +7,12 @@ pub enum ReceivedBencodeType {
     Unknown(char),
 }
 
+impl From<BencodeType> for ReceivedBencodeType {
+    fn from(bencode_type: BencodeType) -> Self {
+        ReceivedBencodeType::Known(bencode_type)
+    }
+}
+
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub enum BencodeError {
     #[error("unexpected end of input")]

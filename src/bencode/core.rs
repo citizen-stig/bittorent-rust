@@ -34,13 +34,20 @@ pub enum BencodeType {
 }
 
 impl BencodeType {
-    pub fn from_byte(b: u8) -> ReceivedBencodeType {
+    pub fn from_byte_to_received(b: u8) -> ReceivedBencodeType {
+        match Self::from_byte(b) {
+            Some(bencode_type) => ReceivedBencodeType::Known(bencode_type),
+            None => ReceivedBencodeType::Unknown(char::from(b)),
+        }
+    }
+
+    fn from_byte(b: u8) -> Option<Self> {
         match b {
-            INT => ReceivedBencodeType::Known(BencodeType::Integer),
-            LIST => ReceivedBencodeType::Known(BencodeType::List),
-            DICT => ReceivedBencodeType::Known(BencodeType::Dict),
-            b'0'..=b'9' => ReceivedBencodeType::Known(BencodeType::ByteString),
-            _ => ReceivedBencodeType::Unknown(char::from(b)),
+            INT => Some(BencodeType::Integer),
+            LIST => Some(BencodeType::List),
+            DICT => Some(BencodeType::Dict),
+            b'0'..=b'9' => Some(BencodeType::ByteString),
+            _ => None,
         }
     }
 }
@@ -54,6 +61,17 @@ impl<'de> BencodeDeserializer<'de> {
         }
     }
 
+    fn check_type(&self, expected: BencodeType) -> Result<(), BencodeError> {
+        let recovered_type = BencodeType::from_byte(self.input[self.pos]);
+
+        if recovered_type.as_ref() != Some(&expected) {
+            return Err(BencodeError::UnexpectedBencodeType {
+                expected: Some(expected),
+                actual: BencodeType::from_byte_to_received(self.input[self.pos]),
+            });
+        }
+        Ok(())
+    }
     #[cfg(test)]
     pub(crate) fn is_consumed(&self) -> bool {
         self.pos == self.input.len()
@@ -68,12 +86,7 @@ impl<'de> BencodeDeserializer<'de> {
         {
             return Err(BencodeError::UnexpectedEof);
         }
-        if self.input[self.pos] != INT {
-            return Err(BencodeError::UnexpectedBencodeType {
-                expected: Some(BencodeType::Integer),
-                actual: BencodeType::from_byte(self.input[self.pos]),
-            });
-        }
+        self.check_type(BencodeType::Integer)?;
         let start_pos = self.pos + 1; // first after "i"
         let mut end_pos = self.pos + 2; //
 
@@ -104,13 +117,7 @@ impl<'de> BencodeDeserializer<'de> {
     }
 
     pub(crate) fn parse_bytes(&mut self) -> Result<&'de [u8], BencodeError> {
-        if self
-            .input
-            .len()
-            // WTF is this addition?
-            .checked_sub(self.pos)
-            .is_none()
-        {
+        if self.input.len().checked_sub(self.pos).is_none() {
             return Err(BencodeError::UnexpectedEof);
         }
         let colon_index = match self.input[self.pos..].iter().position(|&x| x == b':') {
@@ -151,30 +158,32 @@ impl<'de> BencodeDeserializer<'de> {
         Ok(s)
     }
 
+    #[allow(dead_code)]
     fn get_integer(&mut self) -> Result<Bencode<'de>, BencodeError> {
         Ok(Bencode::Integer(self.parse_integer()?))
     }
 
+    #[allow(dead_code)]
     fn get_bytes(&mut self) -> Result<Bencode<'de>, BencodeError> {
         Ok(Bencode::Bytes(self.parse_bytes()?))
     }
 
+    #[allow(dead_code)]
     fn get_any(&mut self) -> Result<Bencode<'de>, BencodeError> {
         match self.input.get(self.pos) {
-            None => return Err(BencodeError::UnexpectedEof),
+            None => Err(BencodeError::UnexpectedEof),
             Some(&INT) => self.get_integer(),
             Some(&LIST) => self.get_list(),
             Some(&DICT) => self.get_dict(),
             Some(b'0'..=b'9') => self.get_bytes(),
-            Some(b) => {
-                return Err(BencodeError::UnexpectedBencodeType {
-                    expected: None,
-                    actual: BencodeType::from_byte(*b),
-                });
-            }
+            Some(b) => Err(BencodeError::UnexpectedBencodeType {
+                expected: None,
+                actual: BencodeType::from_byte_to_received(*b),
+            }),
         }
     }
 
+    #[allow(dead_code)]
     fn get_list(&mut self) -> Result<Bencode<'de>, BencodeError> {
         let mut items = Vec::new();
         if self
@@ -187,13 +196,7 @@ impl<'de> BencodeDeserializer<'de> {
             return Err(BencodeError::UnexpectedEof);
         }
 
-        if self.input[self.pos] != LIST {
-            return Err(BencodeError::UnexpectedBencodeType {
-                expected: Some(BencodeType::List),
-                actual: BencodeType::from_byte(self.input[self.pos]),
-            });
-        }
-
+        self.check_type(BencodeType::List)?;
         self.pos = self.pos.checked_add(1).expect("Position overflow");
 
         while self.input.get(self.pos) != Some(&END) {
@@ -204,6 +207,7 @@ impl<'de> BencodeDeserializer<'de> {
         Ok(Bencode::List(items))
     }
 
+    #[allow(dead_code)]
     fn get_dict(&mut self) -> Result<Bencode<'de>, BencodeError> {
         let mut map = BTreeMap::new();
         if self
@@ -216,12 +220,7 @@ impl<'de> BencodeDeserializer<'de> {
             return Err(BencodeError::UnexpectedEof);
         }
 
-        if self.input[self.pos] != DICT {
-            return Err(BencodeError::UnexpectedBencodeType {
-                expected: Some(BencodeType::List),
-                actual: BencodeType::from_byte(self.input[self.pos]),
-            });
-        }
+        self.check_type(BencodeType::Dict)?;
 
         self.pos = self.pos.checked_add(1).expect("Position overflow");
 
@@ -279,7 +278,7 @@ impl<'de> BencodeDeserializer<'de> {
             }
             Some(b) => Err(BencodeError::UnexpectedBencodeType {
                 expected: None,
-                actual: BencodeType::from_byte(*b),
+                actual: BencodeType::from_byte_to_received(*b),
             }),
         }
     }
@@ -396,7 +395,6 @@ mod tests {
         }
     }
 
-    // This is where things gets interesting.
     #[test]
     fn parse_list() {
         let cases = [
@@ -407,7 +405,7 @@ mod tests {
             ),
             (
                 &b"li42e1:ae"[..],
-                Bencode::List(vec![Bencode::Integer(42), Bencode::Bytes(&[b'a'])]),
+                Bencode::List(vec![Bencode::Integer(42), Bencode::Bytes(&b"a"[..])]),
             ),
             // Nested lists
             (
@@ -460,14 +458,18 @@ mod tests {
 
         for (input, expected) in cases {
             let mut deserializer = BencodeDeserializer::new(input);
-            let actual = deserializer.get_list().expect(&format!(
-                "Unexpected error for input: {}, output: {:?}",
-                String::from_utf8_lossy(input),
-                expected,
-            ));
+            let actual = deserializer.get_list().unwrap_or_else(|_| {
+                panic!(
+                    "Unexpected error for input: {}, output: {:?}",
+                    String::from_utf8_lossy(input),
+                    expected,
+                )
+            });
             assert_eq!(actual, expected);
         }
     }
+
+    // TODO: List error cases
 
     #[test]
     fn parse_dict() {
@@ -477,6 +479,7 @@ mod tests {
                 &b"d1:ai42ee"[..],
                 Bencode::Dict([(&[b'a'][..], Bencode::Integer(42))].into()),
             ),
+            // TODO: More happy cases
         ];
         for (input, expected) in cases {
             let mut deserializer = BencodeDeserializer::new(input);
@@ -484,4 +487,6 @@ mod tests {
             assert_eq!(actual, expected);
         }
     }
+
+    // TODO: dict error cases
 }
