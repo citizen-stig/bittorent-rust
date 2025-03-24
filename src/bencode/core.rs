@@ -151,30 +151,31 @@ impl<'de> BencodeDeserializer<'de> {
         Ok(s)
     }
 
-    fn get_any(&mut self) -> Result<Bencode, BencodeError> {
-        let item = match self.input.get(self.pos) {
+    fn get_integer(&mut self) -> Result<Bencode<'de>, BencodeError> {
+        Ok(Bencode::Integer(self.parse_integer()?))
+    }
+
+    fn get_bytes(&mut self) -> Result<Bencode<'de>, BencodeError> {
+        Ok(Bencode::Bytes(self.parse_bytes()?))
+    }
+
+    fn get_any(&mut self) -> Result<Bencode<'de>, BencodeError> {
+        match self.input.get(self.pos) {
             None => return Err(BencodeError::UnexpectedEof),
-            Some(&INT) => {
-                let i = self.parse_integer()?;
-                Bencode::Integer(i)
-            }
-            Some(&LIST) => self.get_list()?,
-            Some(&DICT) => self.get_dict()?,
-            Some(b'0'..=b'9') => {
-                let b = self.parse_bytes()?;
-                Bencode::Bytes(b.to_vec())
-            }
+            Some(&INT) => self.get_integer(),
+            Some(&LIST) => self.get_list(),
+            Some(&DICT) => self.get_dict(),
+            Some(b'0'..=b'9') => self.get_bytes(),
             Some(b) => {
                 return Err(BencodeError::UnexpectedBencodeType {
                     expected: None,
                     actual: BencodeType::from_byte(*b),
                 });
             }
-        };
-        Ok(item)
+        }
     }
 
-    fn get_list(&mut self) -> Result<Bencode, BencodeError> {
+    fn get_list(&mut self) -> Result<Bencode<'de>, BencodeError> {
         let mut items = Vec::new();
         if self
             .input
@@ -203,7 +204,7 @@ impl<'de> BencodeDeserializer<'de> {
         Ok(Bencode::List(items))
     }
 
-    fn get_dict(&mut self) -> Result<Bencode, BencodeError> {
+    fn get_dict(&mut self) -> Result<Bencode<'de>, BencodeError> {
         let mut map = BTreeMap::new();
         if self
             .input
@@ -227,7 +228,7 @@ impl<'de> BencodeDeserializer<'de> {
         while self.input.get(self.pos) != Some(&END) {
             let key = self.parse_bytes()?;
             let value = self.get_any()?;
-            map.insert(key.to_vec(), value);
+            map.insert(key, value);
         }
 
         Ok(Bencode::Dict(map))
@@ -286,11 +287,12 @@ impl<'de> BencodeDeserializer<'de> {
 
 #[derive(Debug, PartialEq)]
 #[allow(dead_code)]
-enum Bencode {
+enum Bencode<'a> {
     Integer(i64),
-    Bytes(Vec<u8>),
-    List(Vec<Bencode>),
-    Dict(BTreeMap<Vec<u8>, Bencode>),
+    Bytes(&'a [u8]),
+    // TODO: Zero copy those.
+    List(Vec<Bencode<'a>>),
+    Dict(BTreeMap<&'a [u8], Bencode<'a>>),
 }
 
 #[cfg(test)]
@@ -405,12 +407,12 @@ mod tests {
             ),
             (
                 &b"li42e1:ae"[..],
-                Bencode::List(vec![Bencode::Integer(42), Bencode::Bytes(vec![b'a'])]),
+                Bencode::List(vec![Bencode::Integer(42), Bencode::Bytes(&[b'a'])]),
             ),
             // Nested lists
             (
                 &b"ll3:fooee"[..],
-                Bencode::List(vec![Bencode::List(vec![Bencode::Bytes(b"foo".to_vec())])]),
+                Bencode::List(vec![Bencode::List(vec![Bencode::Bytes(&b"foo"[..])])]),
             ),
             (
                 &b"lli42eeli12eee"[..],
@@ -424,13 +426,13 @@ mod tests {
                 &b"li42e3:bar4:spami-10ee"[..],
                 Bencode::List(vec![
                     Bencode::Integer(42),
-                    Bencode::Bytes(b"bar".to_vec()),
-                    Bencode::Bytes(b"spam".to_vec()),
+                    Bencode::Bytes(&b"bar"[..]),
+                    Bencode::Bytes(&b"spam"[..]),
                     Bencode::Integer(-10),
                 ]),
             ),
             // List with empty byte string
-            (&b"l0:e"[..], Bencode::List(vec![Bencode::Bytes(vec![])])),
+            (&b"l0:e"[..], Bencode::List(vec![Bencode::Bytes(&[])])),
             // List with deep nesting
             (
                 &b"llleee"[..],
@@ -440,8 +442,8 @@ mod tests {
             (
                 &b"llelei42ee"[..],
                 Bencode::List(vec![
-                    Bencode::List(vec![]),
-                    Bencode::List(vec![]),
+                    Bencode::List(Vec::new()),
+                    Bencode::List(Vec::new()),
                     Bencode::Integer(42),
                 ]),
             ),
@@ -450,7 +452,7 @@ mod tests {
                 &b"lld3:foo3:baree"[..],
                 Bencode::List(vec![Bencode::List(vec![Bencode::Dict({
                     let mut map = BTreeMap::new();
-                    map.insert(b"foo".to_vec(), Bencode::Bytes(b"bar".to_vec()));
+                    map.insert(&b"foo"[..], Bencode::Bytes(&b"bar"[..]));
                     map
                 })])]),
             ),
@@ -473,7 +475,7 @@ mod tests {
             (&b"de"[..], Bencode::Dict(Default::default())),
             (
                 &b"d1:ai42ee"[..],
-                Bencode::Dict([(vec![b'a'], Bencode::Integer(42))].into()),
+                Bencode::Dict([(&[b'a'][..], Bencode::Integer(42))].into()),
             ),
         ];
         for (input, expected) in cases {
