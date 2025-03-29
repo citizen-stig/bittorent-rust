@@ -165,6 +165,10 @@ impl<'de> serde::de::MapAccess<'de> for BencodeSeqAccess<'de, '_> {
 
 struct BencodeSerializer;
 
+pub fn to_bencode<T: ?Sized + Serialize>(value: &T) -> Result<Vec<u8>, BencodeSerializationError> {
+    T::serialize(value, BencodeSerializer)
+}
+
 struct BencodeContainerSerializer {
     output: Vec<u8>,
 }
@@ -511,7 +515,7 @@ impl serde::Serializer for BencodeSerializer {
     where
         T: ?Sized + Serialize,
     {
-        todo!()
+        Err(BencodeSerializationError::UnsupportedType)
     }
 
     fn serialize_newtype_variant<T>(
@@ -524,11 +528,11 @@ impl serde::Serializer for BencodeSerializer {
     where
         T: ?Sized + Serialize,
     {
-        todo!()
+        Err(BencodeSerializationError::UnsupportedType)
     }
 
     fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        todo!()
+        Ok(BencodeContainerSerializer::new_list())
     }
 
     fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple, Self::Error> {
@@ -554,7 +558,7 @@ impl serde::Serializer for BencodeSerializer {
     }
 
     fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-        todo!()
+        Ok(BencodeContainerSerializer::new_dict())
     }
 
     fn serialize_struct(
@@ -562,7 +566,7 @@ impl serde::Serializer for BencodeSerializer {
         _name: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
-        todo!()
+        Ok(BencodeContainerSerializer::new_dict())
     }
 
     fn serialize_struct_variant(
@@ -572,7 +576,7 @@ impl serde::Serializer for BencodeSerializer {
         _variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        todo!()
+        Err(BencodeSerializationError::UnsupportedType)
     }
 }
 

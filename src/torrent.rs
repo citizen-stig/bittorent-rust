@@ -8,7 +8,7 @@ pub struct TorrentFile {
     info: MetaInfo,
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct MetaInfo {
     length: usize,
     name: String,
@@ -22,7 +22,7 @@ pub struct MetaInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bencode::BencodeDeserializer;
+    use crate::bencode::{to_bencode, BencodeDeserializer};
     use serde::Deserialize;
     use std::path::Path;
 
@@ -46,5 +46,7 @@ mod tests {
         println!("{:#?}", result.info.name);
         println!("{:#?}", result.announce);
         println!("{:#?}", result.info.length);
+        let x = to_bencode(&result.info).unwrap();
+        println!("{:#?}", x);
     }
 }

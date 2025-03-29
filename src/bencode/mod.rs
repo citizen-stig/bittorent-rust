@@ -8,6 +8,7 @@ mod deser;
 
 pub use crate::bencode::core::BencodeDeserializer;
 pub use crate::bencode::error::BencodeDeserializationError;
+pub use deser::to_bencode;
 
 #[cfg(test)]
 mod tests {
