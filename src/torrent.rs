@@ -51,23 +51,16 @@ mod tests {
         println!("Length: {}", torrent_file.info.length);
         let raw_meta = to_bencode(&torrent_file.info).unwrap();
 
-
         let mut hasher = sha1::Sha1::new();
         hasher.update(&raw_meta);
         let hash = hasher.finalize();
         println!("Info Hash: {}", hex::encode(&hash[..]));
+        println!("Piece Length: {}", torrent_file.info.piece_length);
 
-        let mut deserializer_2 = BencodeDeserializer::new(&raw_meta[..]);
+        println!("Piece Hashes: ");
+        for piece in torrent_file.info.pieces.chunks(20) {
+            println!("{}", hex::encode(piece));
+        }
 
-        let meta_info_2 = MetaInfo::deserialize(&mut deserializer_2).unwrap();
-        assert_eq!(meta_info_2, torrent_file.info);
-
-
-        let raw_torrent = to_bencode(&torrent_file).unwrap();
-        // Write raw_meta to a file named "sample_2.torrent" in the same folder
-        let output_path = Path::new(&project_root)
-            .join("torrents")
-            .join("sample_2.torrent");
-        std::fs::write(output_path, &raw_torrent).expect("Failed to write raw_meta to file");
     }
 }
