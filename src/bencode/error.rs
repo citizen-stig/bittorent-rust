@@ -14,7 +14,7 @@ impl From<BencodeType> for ReceivedBencodeType {
 }
 
 #[derive(thiserror::Error, Debug, PartialEq)]
-pub enum BencodeError {
+pub enum BencodeDeserializationError {
     #[error("unexpected end of input")]
     UnexpectedEof,
     #[error("cannot parse int {0}")]
@@ -34,20 +34,38 @@ pub enum BencodeError {
     },
     #[error("cannot parse str: {0}")]
     InvalidString(#[from] std::str::Utf8Error),
+    #[error("invalid map key, it should be byt string, but got {actual:?}")]
+    InvalidKey { actual: ReceivedBencodeType },
     #[error("custom: {0}")]
     Custom(&'static str),
-    #[error("invalid map key, it should be byt string, but got {actual:?}")]
-    InvalidKey {
-        actual: ReceivedBencodeType,
-    },
 }
 
 // TODO: Move to serde
-impl serde::de::Error for BencodeError {
+impl serde::de::Error for BencodeDeserializationError {
     fn custom<T>(_msg: T) -> Self
     where
         T: Display,
     {
-        serde::de::Error::missing_field("x")
+        BencodeDeserializationError::Custom("custom")
+    }
+}
+
+#[derive(thiserror::Error, Debug, PartialEq)]
+pub enum BencodeSerializationError {
+    #[error("unsupported type")]
+    UnsupportedType,
+    // TODO: Add static string for error
+    #[error("invalid map key, it should be byt string, but got something else")]
+    InvalidMapKey,
+    #[error("custom: {0}")]
+    Custom(&'static str),
+}
+
+impl serde::ser::Error for BencodeSerializationError {
+    fn custom<T>(_msg: T) -> Self
+    where
+        T: Display,
+    {
+        BencodeSerializationError::Custom("custom")
     }
 }

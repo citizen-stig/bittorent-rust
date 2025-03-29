@@ -44,6 +44,7 @@ mod tests {
         let mut deserializer = BencodeDeserializer::new(&bytes);
         let result = TorrentFile::deserialize(&mut deserializer).unwrap();
         println!("{:#?}", result.info.name);
+        println!("{:#?}", result.announce);
         println!("{:#?}", result.info.length);
     }
 }

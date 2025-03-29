@@ -1,10 +1,11 @@
 use crate::bencode::core::{BencodeType, DICT, END, INT, LIST};
-use crate::bencode::{BencodeDeserializer, BencodeError};
+use crate::bencode::error::BencodeSerializationError;
+use crate::bencode::{BencodeDeserializationError, BencodeDeserializer};
 use serde::de::{DeserializeSeed, Visitor};
-use serde::forward_to_deserialize_any;
+use serde::{forward_to_deserialize_any, Serialize};
 
 impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
-    type Error = BencodeError;
+    type Error = BencodeDeserializationError;
 
     forward_to_deserialize_any! {
         bool i8 i16 i32 u8 u16 u32 u64 f32 f64 char str string
@@ -18,12 +19,12 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
         V: Visitor<'de>,
     {
         match self.input.get(self.pos) {
-            None => Err(BencodeError::UnexpectedEof),
+            None => Err(BencodeDeserializationError::UnexpectedEof),
             Some(&INT) => self.deserialize_i64(visitor),
             Some(&LIST) => self.deserialize_seq(visitor),
             Some(&DICT) => self.deserialize_map(visitor),
             Some(b'0'..=b'9') => self.deserialize_bytes(visitor),
-            Some(b) => Err(BencodeError::UnexpectedBencodeType {
+            Some(b) => Err(BencodeDeserializationError::UnexpectedBencodeType {
                 expected: None,
                 actual: BencodeType::from_byte_to_received(*b),
             }),
@@ -51,7 +52,7 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
     {
         match self.input.get(self.pos) {
             None => {
-                return Err(BencodeError::UnexpectedEof);
+                return Err(BencodeDeserializationError::UnexpectedEof);
             }
             Some(b'0'..=b'9') => {
                 let elements = self.parse_bytes()?.to_vec();
@@ -92,13 +93,17 @@ struct BencodeSeqAccess<'de, 'a> {
 }
 
 impl<'de, 'a> BencodeSeqAccess<'de, 'a> {
-    pub(crate) fn new_list(de: &'a mut BencodeDeserializer<'de>) -> Result<Self, BencodeError> {
+    pub(crate) fn new_list(
+        de: &'a mut BencodeDeserializer<'de>,
+    ) -> Result<Self, BencodeDeserializationError> {
         de.check_type(BencodeType::List)?;
         de.pos = de.pos.checked_add(1).expect("Position overflow");
         Ok(Self { de })
     }
 
-    pub(crate) fn new_dict(de: &'a mut BencodeDeserializer<'de>) -> Result<Self, BencodeError> {
+    pub(crate) fn new_dict(
+        de: &'a mut BencodeDeserializer<'de>,
+    ) -> Result<Self, BencodeDeserializationError> {
         de.check_type(BencodeType::Dict)?;
         de.pos = de.pos.checked_add(1).expect("Position overflow");
         Ok(Self { de })
@@ -106,7 +111,7 @@ impl<'de, 'a> BencodeSeqAccess<'de, 'a> {
 }
 
 impl<'de> serde::de::SeqAccess<'de> for BencodeSeqAccess<'de, '_> {
-    type Error = BencodeError;
+    type Error = BencodeDeserializationError;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error>
     where
@@ -123,7 +128,7 @@ impl<'de> serde::de::SeqAccess<'de> for BencodeSeqAccess<'de, '_> {
 }
 
 impl<'de> serde::de::MapAccess<'de> for BencodeSeqAccess<'de, '_> {
-    type Error = BencodeError;
+    type Error = BencodeDeserializationError;
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
     where
@@ -135,11 +140,11 @@ impl<'de> serde::de::MapAccess<'de> for BencodeSeqAccess<'de, '_> {
         }
         match self.de.input.get(self.de.pos) {
             None => {
-                return Err(BencodeError::UnexpectedEof);
+                return Err(BencodeDeserializationError::UnexpectedEof);
             }
             Some(b'0'..=b'9') => {}
             Some(b) => {
-                return Err(BencodeError::InvalidKey {
+                return Err(BencodeDeserializationError::InvalidKey {
                     actual: BencodeType::from_byte_to_received(*b),
                 })
             }
@@ -155,6 +160,419 @@ impl<'de> serde::de::MapAccess<'de> for BencodeSeqAccess<'de, '_> {
         V: DeserializeSeed<'de>,
     {
         seed.deserialize(&mut *self.de)
+    }
+}
+
+struct BencodeSerializer;
+
+struct BencodeContainerSerializer {
+    output: Vec<u8>,
+}
+
+#[allow(dead_code)]
+impl BencodeContainerSerializer {
+    pub(crate) fn new_list() -> Self {
+        Self { output: vec![LIST] }
+    }
+    pub(crate) fn new_dict() -> Self {
+        Self { output: vec![DICT] }
+    }
+
+    pub(crate) fn finish(mut self) -> Vec<u8> {
+        self.output.push(END);
+        self.output
+    }
+}
+
+struct KeySerializer<'a> {
+    buf: &'a mut Vec<u8>,
+}
+
+impl serde::Serializer for KeySerializer<'_> {
+    type Ok = ();
+    type Error = BencodeSerializationError;
+
+    type SerializeSeq = serde::ser::Impossible<(), BencodeSerializationError>;
+    type SerializeTuple = serde::ser::Impossible<(), BencodeSerializationError>;
+    type SerializeTupleStruct = serde::ser::Impossible<(), BencodeSerializationError>;
+    type SerializeTupleVariant = serde::ser::Impossible<(), BencodeSerializationError>;
+    type SerializeMap = serde::ser::Impossible<(), BencodeSerializationError>;
+    type SerializeStruct = serde::ser::Impossible<(), BencodeSerializationError>;
+    type SerializeStructVariant = serde::ser::Impossible<(), BencodeSerializationError>;
+
+    // Everything else errors out explicitly
+    fn serialize_bool(self, _: bool) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+
+    fn serialize_i8(self, _: i8) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+
+    fn serialize_i16(self, _: i16) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+
+    fn serialize_i32(self, _: i32) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+    fn serialize_i64(self, _: i64) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+    fn serialize_u8(self, _: u8) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+    fn serialize_u16(self, _: u16) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+    fn serialize_u32(self, _: u32) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+    fn serialize_u64(self, _: u64) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+    fn serialize_f32(self, _: f32) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+    fn serialize_f64(self, _: f64) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+    fn serialize_char(self, _: char) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+    fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
+        self.buf.extend(format!("{}:", v.len()).bytes());
+        self.buf.extend_from_slice(v.as_bytes());
+        Ok(())
+    }
+    fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
+        self.buf.extend(format!("{}:", v.len()).bytes());
+        self.buf.extend_from_slice(v);
+        Ok(())
+    }
+    fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+    fn serialize_some<T>(self, _: &T) -> Result<Self::Ok, Self::Error>
+    where
+        T: ?Sized + Serialize,
+    {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+    fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+
+    fn serialize_unit_struct(self, _: &'static str) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+    fn serialize_unit_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        _: &'static str,
+    ) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+
+    fn serialize_newtype_struct<T>(self, _: &'static str, _: &T) -> Result<Self::Ok, Self::Error>
+    where
+        T: ?Sized + Serialize,
+    {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+
+    fn serialize_newtype_variant<T>(
+        self,
+        _: &'static str,
+        _: u32,
+        _: &'static str,
+        _: &T,
+    ) -> Result<Self::Ok, Self::Error>
+    where
+        T: ?Sized + Serialize,
+    {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+
+    fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+    fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+    fn serialize_tuple_struct(
+        self,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeTupleStruct, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+    fn serialize_tuple_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeTupleVariant, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+    fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+    fn serialize_struct(
+        self,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeStruct, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+    fn serialize_struct_variant(
+        self,
+        _: &'static str,
+        _: u32,
+        _: &'static str,
+        _: usize,
+    ) -> Result<Self::SerializeStructVariant, Self::Error> {
+        Err(BencodeSerializationError::InvalidMapKey)
+    }
+}
+
+impl serde::ser::SerializeSeq for BencodeContainerSerializer {
+    type Ok = Vec<u8>;
+    type Error = BencodeSerializationError;
+
+    fn serialize_element<T>(&mut self, value: &T) -> Result<(), Self::Error>
+    where
+        T: ?Sized + Serialize,
+    {
+        let value = value.serialize(BencodeSerializer)?;
+        self.output.extend_from_slice(&value);
+        Ok(())
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        Ok(self.finish())
+    }
+}
+
+impl serde::ser::SerializeMap for BencodeContainerSerializer {
+    type Ok = Vec<u8>;
+    type Error = BencodeSerializationError;
+
+    fn serialize_key<T>(&mut self, key: &T) -> Result<(), Self::Error>
+    where
+        T: ?Sized + Serialize,
+    {
+        key.serialize(KeySerializer {
+            buf: &mut self.output,
+        })
+    }
+
+    fn serialize_value<T>(&mut self, value: &T) -> Result<(), Self::Error>
+    where
+        T: ?Sized + Serialize,
+    {
+        let serialized_value = value.serialize(BencodeSerializer)?;
+        self.output.extend_from_slice(&serialized_value);
+        Ok(())
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        Ok(self.finish())
+    }
+}
+
+impl serde::ser::SerializeStruct for BencodeContainerSerializer {
+    type Ok = Vec<u8>;
+    type Error = BencodeSerializationError;
+
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Self::Error>
+    where
+        T: ?Sized + Serialize,
+    {
+        let serialized_key = key.serialize(BencodeSerializer)?;
+        let serialize_value = value.serialize(BencodeSerializer)?;
+        self.output.extend_from_slice(&serialized_key);
+        self.output.extend_from_slice(&serialize_value);
+        Ok(())
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        Ok(self.finish())
+    }
+}
+
+impl serde::Serializer for BencodeSerializer {
+    type Ok = Vec<u8>;
+    type Error = BencodeSerializationError;
+    type SerializeSeq = BencodeContainerSerializer;
+    type SerializeTuple = serde::ser::Impossible<Self::Ok, Self::Error>;
+    type SerializeTupleStruct = serde::ser::Impossible<Self::Ok, Self::Error>;
+    type SerializeTupleVariant = serde::ser::Impossible<Self::Ok, Self::Error>;
+    type SerializeMap = BencodeContainerSerializer;
+    type SerializeStruct = BencodeContainerSerializer;
+    type SerializeStructVariant = serde::ser::Impossible<Self::Ok, Self::Error>;
+
+    fn serialize_bool(self, _v: bool) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_i8(self, _v: i8) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_i16(self, _v: i16) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_i32(self, _v: i32) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
+        Ok(format!("i{}e", v).as_bytes().to_vec())
+    }
+
+    fn serialize_u8(self, _v: u8) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_u16(self, _v: u16) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_u32(self, _v: u32) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_u64(self, _v: u64) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_f32(self, _v: f32) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_f64(self, _v: f64) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_char(self, _v: char) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
+        let len = v.len();
+        let value = format!("{}:{}", len, v).as_bytes().to_vec();
+        Ok(value)
+    }
+
+    fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
+        let len = v.len();
+        let mut prefix = format!("{}:", len).as_bytes().to_vec();
+        prefix.extend_from_slice(v);
+        Ok(prefix)
+    }
+
+    fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_some<T>(self, _value: &T) -> Result<Self::Ok, Self::Error>
+    where
+        T: ?Sized + Serialize,
+    {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_unit_struct(self, _name: &'static str) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_unit_variant(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+    ) -> Result<Self::Ok, Self::Error> {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_newtype_struct<T>(
+        self,
+        _name: &'static str,
+        _value: &T,
+    ) -> Result<Self::Ok, Self::Error>
+    where
+        T: ?Sized + Serialize,
+    {
+        todo!()
+    }
+
+    fn serialize_newtype_variant<T>(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+        _value: &T,
+    ) -> Result<Self::Ok, Self::Error>
+    where
+        T: ?Sized + Serialize,
+    {
+        todo!()
+    }
+
+    fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple, Self::Error> {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_tuple_struct(
+        self,
+        _name: &'static str,
+        _len: usize,
+    ) -> Result<Self::SerializeTupleStruct, Self::Error> {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_tuple_variant(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+        _len: usize,
+    ) -> Result<Self::SerializeTupleVariant, Self::Error> {
+        Err(BencodeSerializationError::UnsupportedType)
+    }
+
+    fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_struct(
+        self,
+        _name: &'static str,
+        _len: usize,
+    ) -> Result<Self::SerializeStruct, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_struct_variant(
+        self,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+        _len: usize,
+    ) -> Result<Self::SerializeStructVariant, Self::Error> {
+        todo!()
     }
 }
 
@@ -183,7 +601,7 @@ mod tests {
 
     fn test_error_case<'a, T>(
         deserializer: &mut BencodeDeserializer<'a>,
-        expected_error: BencodeError,
+        expected_error: BencodeDeserializationError,
     ) where
         T: serde::Deserialize<'a> + PartialEq + std::fmt::Debug,
     {
@@ -216,13 +634,16 @@ mod tests {
     #[test]
     fn integer_error_cases() {
         let cases = [
-            (&b"i"[..], BencodeError::UnexpectedEof),
-            (&b"ie"[..], BencodeError::UnexpectedEof),
-            (&b"i42"[..], BencodeError::UnexpectedEof),
-            (&b"i42x"[..], BencodeError::InvalidInteger('x')),
+            (&b"i"[..], BencodeDeserializationError::UnexpectedEof),
+            (&b"ie"[..], BencodeDeserializationError::UnexpectedEof),
+            (&b"i42"[..], BencodeDeserializationError::UnexpectedEof),
+            (
+                &b"i42x"[..],
+                BencodeDeserializationError::InvalidInteger('x'),
+            ),
             (
                 &b"i9223372036854775808e"[..],
-                BencodeError::CannotParseInteger(
+                BencodeDeserializationError::CannotParseInteger(
                     "92233720368547758080000".parse::<i64>().unwrap_err(),
                 ),
             ),
@@ -268,13 +689,13 @@ mod tests {
     #[test]
     fn list_error_cases() {
         let cases = [
-            (&b"l"[..], BencodeError::UnexpectedEof),
-            (&b"li42e"[..], BencodeError::UnexpectedEof),
-            (&b"li42"[..], BencodeError::UnexpectedEof),
+            (&b"l"[..], BencodeDeserializationError::UnexpectedEof),
+            (&b"li42e"[..], BencodeDeserializationError::UnexpectedEof),
+            (&b"li42"[..], BencodeDeserializationError::UnexpectedEof),
             (
                 &b"lxi42ee"[..],
-                BencodeError::UnexpectedBencodeType {
-                    expected: Some(BencodeType::Integer),
+                BencodeDeserializationError::UnexpectedBencodeType {
+                    expected: Some(Integer),
                     actual: ReceivedBencodeType::Unknown('x'),
                 },
             ),
@@ -368,13 +789,19 @@ mod tests {
         use std::collections::HashMap;
 
         let cases = [
-            (&b"d"[..], BencodeError::UnexpectedEof),
-            (&b"d3:foo"[..], BencodeError::UnexpectedEof),
-            (&b"di42ei43ee"[..], BencodeError::InvalidKey {
-                actual: ReceivedBencodeType::Known(Integer),
-            }),
-            (&b"d3:fooi42e"[..], BencodeError::UnexpectedEof),
-            (&b"d3:fooe"[..], BencodeError::UnexpectedEof),
+            (&b"d"[..], BencodeDeserializationError::UnexpectedEof),
+            (&b"d3:foo"[..], BencodeDeserializationError::UnexpectedEof),
+            (
+                &b"di42ei43ee"[..],
+                BencodeDeserializationError::InvalidKey {
+                    actual: ReceivedBencodeType::Known(Integer),
+                },
+            ),
+            (
+                &b"d3:fooi42e"[..],
+                BencodeDeserializationError::UnexpectedEof,
+            ),
+            (&b"d3:fooe"[..], BencodeDeserializationError::UnexpectedEof),
         ];
 
         for (data, expected_error) in cases {
@@ -455,5 +882,26 @@ mod tests {
         assert_eq!(person.name, "Alice");
         assert_eq!(person.age, 25);
         assert_eq!(person.hobbies, vec!["reading", "music"]);
+    }
+
+    // Helper function to serialize a value and compare with the expected output.
+    fn test_serialize<T>(value: T, expected: &[u8])
+    where
+        T: Serialize,
+    {
+        println!("Testing serialization of {:?}", std::any::type_name::<T>());
+        let serializer = BencodeSerializer;
+        let result = value.serialize(serializer).expect("Serialization failed");
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_serialize_integers() {
+        test_serialize(42i64, b"i42e");
+        test_serialize(-42i64, b"i-42e");
+        test_serialize(0i64, b"i0e");
+
+        test_serialize(42i64, b"i42e");
+        test_serialize(42i64, b"i42e");
     }
 }

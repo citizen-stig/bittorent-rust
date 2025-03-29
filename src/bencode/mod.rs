@@ -7,7 +7,7 @@ mod error;
 mod deser;
 
 pub use crate::bencode::core::BencodeDeserializer;
-pub use crate::bencode::error::BencodeError;
+pub use crate::bencode::error::BencodeDeserializationError;
 
 #[cfg(test)]
 mod tests {
@@ -33,7 +33,7 @@ mod tests {
 
     fn test_error_case<'a, T>(
         deserializer: &mut BencodeDeserializer<'a>,
-        _expected_error: BencodeError,
+        _expected_error: BencodeDeserializationError,
     ) where
         T: ::serde::Deserialize<'a> + PartialEq + std::fmt::Debug,
     {
@@ -58,7 +58,7 @@ mod tests {
 
     #[test]
     fn list_error_cases() {
-        let cases = [(&b"l"[..], BencodeError::UnexpectedEof)];
+        let cases = [(&b"l"[..], BencodeDeserializationError::UnexpectedEof)];
 
         for (data, expected_error) in cases {
             let mut deserializer = BencodeDeserializer::new(data);
