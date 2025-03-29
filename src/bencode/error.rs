@@ -52,8 +52,8 @@ impl serde::de::Error for BencodeDeserializationError {
 
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub enum BencodeSerializationError {
-    #[error("unsupported type")]
-    UnsupportedType,
+    #[error("unsupported type: {0}")]
+    UnsupportedType(&'static str),
     // TODO: Add static string for error
     #[error("invalid map key, it should be byt string, but got something else")]
     InvalidMapKey,

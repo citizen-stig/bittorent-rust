@@ -169,17 +169,14 @@ pub fn to_bencode<T: ?Sized + Serialize>(value: &T) -> Result<Vec<u8>, BencodeSe
     T::serialize(value, BencodeSerializer)
 }
 
-struct BencodeContainerSerializer {
+struct BencodeListSerializer {
     output: Vec<u8>,
 }
 
 #[allow(dead_code)]
-impl BencodeContainerSerializer {
-    pub(crate) fn new_list() -> Self {
+impl BencodeListSerializer {
+    pub(crate) fn new() -> Self {
         Self { output: vec![LIST] }
-    }
-    pub(crate) fn new_dict() -> Self {
-        Self { output: vec![DICT] }
     }
 
     pub(crate) fn finish(mut self) -> Vec<u8> {
@@ -188,21 +185,73 @@ impl BencodeContainerSerializer {
     }
 }
 
-struct KeySerializer<'a> {
-    buf: &'a mut Vec<u8>,
-}
-
-impl serde::Serializer for KeySerializer<'_> {
-    type Ok = ();
+impl serde::ser::SerializeSeq for BencodeListSerializer {
+    type Ok = Vec<u8>;
     type Error = BencodeSerializationError;
 
-    type SerializeSeq = serde::ser::Impossible<(), BencodeSerializationError>;
-    type SerializeTuple = serde::ser::Impossible<(), BencodeSerializationError>;
-    type SerializeTupleStruct = serde::ser::Impossible<(), BencodeSerializationError>;
-    type SerializeTupleVariant = serde::ser::Impossible<(), BencodeSerializationError>;
-    type SerializeMap = serde::ser::Impossible<(), BencodeSerializationError>;
-    type SerializeStruct = serde::ser::Impossible<(), BencodeSerializationError>;
-    type SerializeStructVariant = serde::ser::Impossible<(), BencodeSerializationError>;
+    fn serialize_element<T>(&mut self, value: &T) -> Result<(), Self::Error>
+    where
+        T: ?Sized + Serialize,
+    {
+        let value = value.serialize(BencodeSerializer)?;
+        self.output.extend(value);
+        Ok(())
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        Ok(self.finish())
+    }
+}
+
+type PreSerializeKey = (Vec<u8>, Vec<u8>);
+type SerializedValue = Vec<u8>;
+
+struct BencodeMapSerializer {
+    key_values: Vec<(PreSerializeKey, SerializedValue)>,
+}
+
+impl BencodeMapSerializer {
+    pub(crate) fn new() -> Self {
+        Self { key_values: vec![] }
+    }
+
+    pub(crate) fn finish(mut self) -> Vec<u8> {
+        self.key_values.sort_unstable_by(|a, b| a.0.1.cmp(&b.0.1));
+        let total_len = self
+            .key_values
+            .iter()
+            .map(|(k, v)| k.0.len() + k.1.len() + v.len())
+            .sum::<usize>()
+            + 2;
+
+        let mut output = Vec::with_capacity(total_len);
+        output.push(DICT);
+
+        for (key, value) in self.key_values {
+            output.extend(key.0);
+            output.extend(key.1);
+            output.extend(value);
+        }
+
+        output.push(END);
+        output
+    }
+}
+
+struct KeySerializer {}
+
+impl serde::Serializer for KeySerializer {
+    type Ok = PreSerializeKey;
+    type Error = BencodeSerializationError;
+
+    type SerializeSeq = serde::ser::Impossible<PreSerializeKey, BencodeSerializationError>;
+    type SerializeTuple = serde::ser::Impossible<PreSerializeKey, BencodeSerializationError>;
+    type SerializeTupleStruct = serde::ser::Impossible<PreSerializeKey, BencodeSerializationError>;
+    type SerializeTupleVariant = serde::ser::Impossible<PreSerializeKey, BencodeSerializationError>;
+    type SerializeMap = serde::ser::Impossible<PreSerializeKey, BencodeSerializationError>;
+    type SerializeStruct = serde::ser::Impossible<PreSerializeKey, BencodeSerializationError>;
+    type SerializeStructVariant =
+        serde::ser::Impossible<PreSerializeKey, BencodeSerializationError>;
 
     // Everything else errors out explicitly
     fn serialize_bool(self, _: bool) -> Result<Self::Ok, Self::Error> {
@@ -245,14 +294,14 @@ impl serde::Serializer for KeySerializer<'_> {
         Err(BencodeSerializationError::InvalidMapKey)
     }
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-        self.buf.extend(format!("{}:", v.len()).bytes());
-        self.buf.extend_from_slice(v.as_bytes());
-        Ok(())
+        // TODO: Improve copy/cloning
+        let prefix = format!("{}:", v.len()).as_bytes().to_vec();
+        let value = v.as_bytes().to_vec();
+        Ok((prefix, value))
     }
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
-        self.buf.extend(format!("{}:", v.len()).bytes());
-        self.buf.extend_from_slice(v);
-        Ok(())
+        let prefix = format!("{}:", v.len()).as_bytes().to_vec();
+        Ok((prefix, v.to_vec()))
     }
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
         Err(BencodeSerializationError::InvalidMapKey)
@@ -342,25 +391,7 @@ impl serde::Serializer for KeySerializer<'_> {
     }
 }
 
-impl serde::ser::SerializeSeq for BencodeContainerSerializer {
-    type Ok = Vec<u8>;
-    type Error = BencodeSerializationError;
-
-    fn serialize_element<T>(&mut self, value: &T) -> Result<(), Self::Error>
-    where
-        T: ?Sized + Serialize,
-    {
-        let value = value.serialize(BencodeSerializer)?;
-        self.output.extend_from_slice(&value);
-        Ok(())
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok(self.finish())
-    }
-}
-
-impl serde::ser::SerializeMap for BencodeContainerSerializer {
+impl serde::ser::SerializeMap for BencodeMapSerializer {
     type Ok = Vec<u8>;
     type Error = BencodeSerializationError;
 
@@ -368,9 +399,11 @@ impl serde::ser::SerializeMap for BencodeContainerSerializer {
     where
         T: ?Sized + Serialize,
     {
-        key.serialize(KeySerializer {
-            buf: &mut self.output,
-        })
+        let key = key.serialize(KeySerializer {})?;
+
+        self.key_values.push((key, Vec::new()));
+
+        Ok(())
     }
 
     fn serialize_value<T>(&mut self, value: &T) -> Result<(), Self::Error>
@@ -378,7 +411,8 @@ impl serde::ser::SerializeMap for BencodeContainerSerializer {
         T: ?Sized + Serialize,
     {
         let serialized_value = value.serialize(BencodeSerializer)?;
-        self.output.extend_from_slice(&serialized_value);
+        let pair = self.key_values.last_mut().expect("No key");
+        pair.1 = serialized_value;
         Ok(())
     }
 
@@ -387,7 +421,7 @@ impl serde::ser::SerializeMap for BencodeContainerSerializer {
     }
 }
 
-impl serde::ser::SerializeStruct for BencodeContainerSerializer {
+impl serde::ser::SerializeStruct for BencodeMapSerializer {
     type Ok = Vec<u8>;
     type Error = BencodeSerializationError;
 
@@ -395,10 +429,9 @@ impl serde::ser::SerializeStruct for BencodeContainerSerializer {
     where
         T: ?Sized + Serialize,
     {
-        let serialized_key = key.serialize(BencodeSerializer)?;
+        let serialized_key = key.serialize(KeySerializer {})?;
         let serialize_value = value.serialize(BencodeSerializer)?;
-        self.output.extend_from_slice(&serialized_key);
-        self.output.extend_from_slice(&serialize_value);
+        self.key_values.push((serialized_key, serialize_value));
         Ok(())
     }
 
@@ -410,60 +443,60 @@ impl serde::ser::SerializeStruct for BencodeContainerSerializer {
 impl serde::Serializer for BencodeSerializer {
     type Ok = Vec<u8>;
     type Error = BencodeSerializationError;
-    type SerializeSeq = BencodeContainerSerializer;
+    type SerializeSeq = BencodeListSerializer;
     type SerializeTuple = serde::ser::Impossible<Self::Ok, Self::Error>;
     type SerializeTupleStruct = serde::ser::Impossible<Self::Ok, Self::Error>;
     type SerializeTupleVariant = serde::ser::Impossible<Self::Ok, Self::Error>;
-    type SerializeMap = BencodeContainerSerializer;
-    type SerializeStruct = BencodeContainerSerializer;
+    type SerializeMap = BencodeMapSerializer;
+    type SerializeStruct = BencodeMapSerializer;
     type SerializeStructVariant = serde::ser::Impossible<Self::Ok, Self::Error>;
 
     fn serialize_bool(self, _v: bool) -> Result<Self::Ok, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+        Err(BencodeSerializationError::UnsupportedType("bool"))
     }
 
-    fn serialize_i8(self, _v: i8) -> Result<Self::Ok, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+    fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
+        Ok(format!("i{}e", v).as_bytes().to_vec())
     }
 
-    fn serialize_i16(self, _v: i16) -> Result<Self::Ok, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+    fn serialize_i16(self, v: i16) -> Result<Self::Ok, Self::Error> {
+        Ok(format!("i{}e", v).as_bytes().to_vec())
     }
 
-    fn serialize_i32(self, _v: i32) -> Result<Self::Ok, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+    fn serialize_i32(self, v: i32) -> Result<Self::Ok, Self::Error> {
+        Ok(format!("i{}e", v).as_bytes().to_vec())
     }
 
     fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
         Ok(format!("i{}e", v).as_bytes().to_vec())
     }
 
-    fn serialize_u8(self, _v: u8) -> Result<Self::Ok, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+    fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
+        Ok(format!("i{}e", v).as_bytes().to_vec())
     }
 
-    fn serialize_u16(self, _v: u16) -> Result<Self::Ok, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+    fn serialize_u16(self, v: u16) -> Result<Self::Ok, Self::Error> {
+        Ok(format!("i{}e", v).as_bytes().to_vec())
     }
 
-    fn serialize_u32(self, _v: u32) -> Result<Self::Ok, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+    fn serialize_u32(self, v: u32) -> Result<Self::Ok, Self::Error> {
+        Ok(format!("i{}e", v).as_bytes().to_vec())
     }
 
-    fn serialize_u64(self, _v: u64) -> Result<Self::Ok, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+    fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
+        Ok(format!("i{}e", v).as_bytes().to_vec())
     }
 
     fn serialize_f32(self, _v: f32) -> Result<Self::Ok, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+        Err(BencodeSerializationError::UnsupportedType("f32"))
     }
 
     fn serialize_f64(self, _v: f64) -> Result<Self::Ok, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+        Err(BencodeSerializationError::UnsupportedType("f64"))
     }
 
     fn serialize_char(self, _v: char) -> Result<Self::Ok, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+        Err(BencodeSerializationError::UnsupportedType("char"))
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
@@ -480,22 +513,22 @@ impl serde::Serializer for BencodeSerializer {
     }
 
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+        Err(BencodeSerializationError::UnsupportedType("none"))
     }
 
     fn serialize_some<T>(self, _value: &T) -> Result<Self::Ok, Self::Error>
     where
         T: ?Sized + Serialize,
     {
-        Err(BencodeSerializationError::UnsupportedType)
+        Err(BencodeSerializationError::UnsupportedType("some"))
     }
 
     fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+        Err(BencodeSerializationError::UnsupportedType("unit"))
     }
 
     fn serialize_unit_struct(self, _name: &'static str) -> Result<Self::Ok, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+        Err(BencodeSerializationError::UnsupportedType("unit_struct"))
     }
 
     fn serialize_unit_variant(
@@ -504,7 +537,7 @@ impl serde::Serializer for BencodeSerializer {
         _variant_index: u32,
         _variant: &'static str,
     ) -> Result<Self::Ok, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+        Err(BencodeSerializationError::UnsupportedType("unit_variant"))
     }
 
     fn serialize_newtype_struct<T>(
@@ -515,7 +548,7 @@ impl serde::Serializer for BencodeSerializer {
     where
         T: ?Sized + Serialize,
     {
-        Err(BencodeSerializationError::UnsupportedType)
+        Err(BencodeSerializationError::UnsupportedType("newtype_struct"))
     }
 
     fn serialize_newtype_variant<T>(
@@ -528,15 +561,17 @@ impl serde::Serializer for BencodeSerializer {
     where
         T: ?Sized + Serialize,
     {
-        Err(BencodeSerializationError::UnsupportedType)
+        Err(BencodeSerializationError::UnsupportedType(
+            "newtype_variant",
+        ))
     }
 
     fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        Ok(BencodeContainerSerializer::new_list())
+        Ok(BencodeListSerializer::new())
     }
 
     fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+        Err(BencodeSerializationError::UnsupportedType("tuple"))
     }
 
     fn serialize_tuple_struct(
@@ -544,7 +579,7 @@ impl serde::Serializer for BencodeSerializer {
         _name: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeTupleStruct, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+        Err(BencodeSerializationError::UnsupportedType("tuple_struct"))
     }
 
     fn serialize_tuple_variant(
@@ -554,11 +589,11 @@ impl serde::Serializer for BencodeSerializer {
         _variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+        Err(BencodeSerializationError::UnsupportedType("tuple_variant"))
     }
 
     fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-        Ok(BencodeContainerSerializer::new_dict())
+        Ok(BencodeMapSerializer::new())
     }
 
     fn serialize_struct(
@@ -566,7 +601,7 @@ impl serde::Serializer for BencodeSerializer {
         _name: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
-        Ok(BencodeContainerSerializer::new_dict())
+        Ok(BencodeMapSerializer::new())
     }
 
     fn serialize_struct_variant(
@@ -576,7 +611,7 @@ impl serde::Serializer for BencodeSerializer {
         _variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        Err(BencodeSerializationError::UnsupportedType)
+        Err(BencodeSerializationError::UnsupportedType("struct_variant"))
     }
 }
 
