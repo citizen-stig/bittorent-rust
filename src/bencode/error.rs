@@ -23,9 +23,9 @@ pub enum BencodeError {
     LenSeparatorMissing,
     #[error("invalid length declaration, non didit character: {0}")]
     InvalidLen(char),
-    #[error("Integer contains non digit character: {0}")]
+    #[error("integer contains non digit character: {0}")]
     InvalidInteger(char),
-    #[error("Integer contains leading zeroes")]
+    #[error("integer contains leading zeroes")]
     InvalidIntegerLeadingZero,
     #[error("invalid bencode data: expected {expected:?}, got {actual:?}")]
     UnexpectedBencodeType {
@@ -34,6 +34,12 @@ pub enum BencodeError {
     },
     #[error("cannot parse str: {0}")]
     InvalidString(#[from] std::str::Utf8Error),
+    #[error("custom: {0}")]
+    Custom(&'static str),
+    #[error("invalid map key, it should be byt string, but got {actual:?}")]
+    InvalidKey {
+        actual: ReceivedBencodeType,
+    },
 }
 
 // TODO: Move to serde

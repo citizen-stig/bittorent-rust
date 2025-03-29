@@ -6,7 +6,6 @@ use std::fmt::Formatter;
 pub struct BencodeDeserializer<'de> {
     pub(crate) input: &'de [u8],
     pub(crate) pos: usize,
-    stack_depth: usize,
 }
 
 impl std::fmt::Debug for BencodeDeserializer<'_> {
@@ -54,14 +53,23 @@ impl BencodeType {
 
 impl<'de> BencodeDeserializer<'de> {
     pub fn new(input: &'de [u8]) -> Self {
-        Self {
-            input,
-            pos: 0,
-            stack_depth: 0,
-        }
+        Self { input, pos: 0 }
     }
 
-    fn check_type(&self, expected: BencodeType) -> Result<(), BencodeError> {
+    pub(crate) fn check_for_container_type(&self) -> Result<(), BencodeError> {
+        if self
+            .input
+            .len()
+            // 1 for "l/d" and 1 for "e"
+            .checked_sub(self.pos.saturating_add(2))
+            .is_none()
+        {
+            return Err(BencodeError::UnexpectedEof);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn check_type(&self, expected: BencodeType) -> Result<(), BencodeError> {
         let recovered_type = BencodeType::from_byte(self.input[self.pos]);
 
         if recovered_type.as_ref() != Some(&expected) {
@@ -144,6 +152,7 @@ impl<'de> BencodeDeserializer<'de> {
         Ok(&self.input[colon_index + 1..end_index])
     }
 
+    #[allow(dead_code)]
     pub(crate) fn parse_str(&mut self) -> Result<&'de str, BencodeError> {
         let string_slice = self.parse_bytes()?;
 
@@ -231,56 +240,6 @@ impl<'de> BencodeDeserializer<'de> {
         }
 
         Ok(Bencode::Dict(map))
-    }
-
-    // Advancing iterator without actual parsing
-    pub(crate) fn skip_value(&mut self) -> Result<(), BencodeError> {
-        match self.input.get(self.pos) {
-            None => Err(BencodeError::UnexpectedEof),
-            Some(&INT) => {
-                let _ = self.parse_integer()?;
-                Ok(())
-            }
-            Some(&LIST) => {
-                self.pos += 1; // Skip 'l'
-                while self.pos < self.input.len() && self.input[self.pos] != END {
-                    self.skip_value()?;
-                }
-                if self.pos < self.input.len() {
-                    self.pos += 1; // Skip 'e'
-                    Ok(())
-                } else {
-                    Err(BencodeError::UnexpectedEof)
-                }
-            }
-            Some(&DICT) => {
-                self.pos += 1; // Skip 'd'
-                while self.pos < self.input.len() && self.input[self.pos] != END {
-                    // Skip key
-                    self.skip_value()?;
-                    // Skip value
-                    if self.pos < self.input.len() {
-                        self.skip_value()?;
-                    } else {
-                        return Err(BencodeError::UnexpectedEof);
-                    }
-                }
-                if self.pos < self.input.len() {
-                    self.pos += 1; // Skip 'e'
-                    Ok(())
-                } else {
-                    Err(BencodeError::UnexpectedEof)
-                }
-            }
-            Some(b'0'..=b'9') => {
-                let _ = self.parse_bytes()?;
-                Ok(())
-            }
-            Some(b) => Err(BencodeError::UnexpectedBencodeType {
-                expected: None,
-                actual: BencodeType::from_byte_to_received(*b),
-            }),
-        }
     }
 }
 

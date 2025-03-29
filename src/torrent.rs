@@ -16,7 +16,6 @@ pub struct MetaInfo {
     #[serde(rename = "piece length")]
     piece_length: usize,
     // pieces: &'a [u8],
-    // TODO: Byte string
     pieces: Vec<u8>,
 }
 
@@ -44,6 +43,7 @@ mod tests {
 
         let mut deserializer = BencodeDeserializer::new(&bytes);
         let result = TorrentFile::deserialize(&mut deserializer).unwrap();
-        println!("{:#?}", result);
+        println!("{:#?}", result.info.name);
+        println!("{:#?}", result.info.length);
     }
 }

@@ -2,8 +2,9 @@
 //!
 
 mod core;
-mod deser;
+// mod deser;
 mod error;
+mod deser;
 
 pub use crate::bencode::core::BencodeDeserializer;
 pub use crate::bencode::error::BencodeError;
@@ -17,7 +18,7 @@ mod tests {
 
     fn test_happy_case<'a, T>(deserializer: &mut BencodeDeserializer<'a>, expected_value: T)
     where
-        T: serde::Deserialize<'a> + PartialEq + std::fmt::Debug,
+        T: ::serde::Deserialize<'a> + PartialEq + std::fmt::Debug,
     {
         let deserialized = T::deserialize(&mut *deserializer).expect("Failed to deserialize");
         assert_eq!(
@@ -34,7 +35,7 @@ mod tests {
         deserializer: &mut BencodeDeserializer<'a>,
         _expected_error: BencodeError,
     ) where
-        T: serde::Deserialize<'a> + PartialEq + std::fmt::Debug,
+        T: ::serde::Deserialize<'a> + PartialEq + std::fmt::Debug,
     {
         let deserialized = T::deserialize(deserializer);
         // Asserting error later
