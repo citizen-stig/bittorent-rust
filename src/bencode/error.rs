@@ -42,10 +42,11 @@ pub enum BencodeDeserializationError {
 
 // TODO: Move to serde
 impl serde::de::Error for BencodeDeserializationError {
-    fn custom<T>(_msg: T) -> Self
+    fn custom<T>(msg: T) -> Self
     where
         T: Display,
     {
+        println!("DESER ERROR: {}", msg);
         BencodeDeserializationError::Custom("custom")
     }
 }
@@ -62,10 +63,11 @@ pub enum BencodeSerializationError {
 }
 
 impl serde::ser::Error for BencodeSerializationError {
-    fn custom<T>(_msg: T) -> Self
+    fn custom<T>(msg: T) -> Self
     where
         T: Display,
     {
+        println!("SERIALIZATION ERROR: {}", msg);
         BencodeSerializationError::Custom("custom")
     }
 }
