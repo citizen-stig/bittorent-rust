@@ -1,3 +1,5 @@
+use crate::torrent::network::PeerClient;
+
 mod bencode;
 mod torrent;
 
@@ -13,11 +15,13 @@ fn main() {
     println!("Tracker URL: {:#?}", torrent_file.announce);
     println!("Length: {}", torrent_file.info.length);
 
-    let client = torrent::network::BitTorrentClient::new();
+    let client = torrent::network::TorrentTrackerClient::new();
 
     let peers = client.get_peers(&torrent_file);
 
-    for peer in peers {
-        println!("{:?}", peer);
+    let hash = torrent_file.meta_hash();
+    for peer_addr in peers {
+        println!("{:?}", peer_addr);
+        let _peer_client = PeerClient::new(peer_addr, hash);
     }
 }

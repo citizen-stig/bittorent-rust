@@ -2,15 +2,16 @@ use crate::bencode::BencodeDeserializer;
 use crate::torrent::meta::TorrentFile;
 use percent_encoding::{percent_encode, NON_ALPHANUMERIC};
 use serde::Deserialize;
+use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4};
 
 const PEER_ID: &'static [u8; 20] = b"-GT0001-NGO456789012";
 
-pub struct BitTorrentClient {
+pub struct TorrentTrackerClient {
     tracker_client: reqwest::blocking::Client,
 }
 
-impl BitTorrentClient {
+impl TorrentTrackerClient {
     pub fn new() -> Self {
         Self {
             tracker_client: reqwest::blocking::Client::new(),
@@ -66,7 +67,7 @@ pub struct TrackerResponse {
     incomplete: u64,
 }
 
-// TODO: Convert to try_from with proper erro
+// TODO: Convert to try_from with proper error
 impl From<RawTrackerResponse> for TrackerResponse {
     fn from(tracker_response: RawTrackerResponse) -> Self {
         let mut peers = Vec::new();
@@ -85,5 +86,34 @@ impl From<RawTrackerResponse> for TrackerResponse {
             complete: tracker_response.complete,
             incomplete: tracker_response.incomplete,
         }
+    }
+}
+
+pub struct PeerClient {
+    stream: std::net::TcpStream,
+}
+
+
+
+impl PeerClient {
+    pub fn new(peer: SocketAddrV4, info_hash: [u8; 20]) -> Self {
+        let mut stream = std::net::TcpStream::connect(peer).expect("Failed to connect to peer");
+        let mut handshake = [0; 68];
+        handshake[0] = 19;
+        handshake[1..20].copy_from_slice(&b"BitTorrent protocol"[..]);
+        handshake[28..48].copy_from_slice(&info_hash);
+        handshake[48..68].copy_from_slice(&PEER_ID[..]);
+        stream
+            .write_all(&handshake)
+            .expect("Failed to send data to peer");
+
+
+        let mut buffer = [0; 68];
+        stream
+            .read_exact(&mut buffer)
+            .expect("Failed to read data from peer");
+        println!("Received 32 bytes: {}", hex::encode(&buffer[48..68]));
+        
+        Self { stream }
     }
 }
