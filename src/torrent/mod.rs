@@ -1,33 +1,9 @@
 #![allow(dead_code)]
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub struct TorrentFile {
-    // TODO: How to do `& str`
-    announce: String,
-    // comment: &'a str,
-    info: MetaInfo,
-}
+pub mod meta;
+pub mod network;
 
-#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct MetaInfo {
-    length: usize,
-    name: String,
-    //
-    #[serde(rename = "piece length")]
-    piece_length: usize,
-    // pieces: &'a [u8],
-    #[serde(with = "serde_bytes")]
-    pieces: Vec<u8>,
-}
 
-#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct TrackerResponse {
-    interval: u64,
-    #[serde(with = "serde_bytes")]
-    peers: Vec<u8>,
-    complete: u64,
-    incomplete: u64,
-}
 
 #[cfg(test)]
 mod tests {
@@ -56,7 +32,7 @@ mod tests {
             .expect("Failed to read torrent file");
 
         let mut deserializer = BencodeDeserializer::new(&bytes);
-        let torrent_file = TorrentFile::deserialize(&mut deserializer).unwrap();
+        let torrent_file = RawTorrentFile::deserialize(&mut deserializer).unwrap();
         println!("Filename: {:#?}", torrent_file.info.name);
         println!("Tracker URL: {:#?}", torrent_file.announce);
         println!("Length: {}", torrent_file.info.length);
@@ -98,7 +74,7 @@ mod tests {
 
         let response_bytes = response.bytes().unwrap();
         let mut deserializer = BencodeDeserializer::new(response_bytes.as_ref());
-        let tracker_response = TrackerResponse::deserialize(&mut deserializer)
+        let tracker_response = RawTrackerResponse::deserialize(&mut deserializer)
             .expect("Failed to deserialize tracker response");
         println!("Interval: {}", tracker_response.interval);
         println!("Peers: {}", tracker_response.peers.len());
