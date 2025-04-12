@@ -93,8 +93,6 @@ pub struct PeerClient {
     stream: std::net::TcpStream,
 }
 
-
-
 impl PeerClient {
     pub fn new(peer: SocketAddrV4, info_hash: [u8; 20]) -> Self {
         let mut stream = std::net::TcpStream::connect(peer).expect("Failed to connect to peer");
@@ -103,17 +101,15 @@ impl PeerClient {
         handshake[1..20].copy_from_slice(&b"BitTorrent protocol"[..]);
         handshake[28..48].copy_from_slice(&info_hash);
         handshake[48..68].copy_from_slice(&PEER_ID[..]);
+        println!("Sending bytes : {}", hex::encode(&handshake));
         stream
             .write_all(&handshake)
             .expect("Failed to send data to peer");
-
 
         let mut buffer = [0; 68];
         stream
             .read_exact(&mut buffer)
             .expect("Failed to read data from peer");
-        println!("Received 32 bytes: {}", hex::encode(&buffer[48..68]));
-        
         Self { stream }
     }
 }
