@@ -1,4 +1,6 @@
 use crate::bencode::{to_bencode, BencodeDeserializationError, BencodeDeserializer};
+use crate::torrent::network::PieceInfo;
+use crate::torrent::SIXTEEN_KIBIBYTES;
 use serde::Deserialize;
 use sha1::Digest;
 use std::fs::File;
@@ -53,4 +55,26 @@ pub struct MetaInfo {
     // pieces: &'a [u8],
     #[serde(with = "serde_bytes")]
     pub pieces: Vec<u8>,
+}
+
+impl MetaInfo {
+    pub fn as_piece_infos(&self) -> impl Iterator<Item = PieceInfo> + '_ {
+        let pieces_total = self.length / SIXTEEN_KIBIBYTES as usize;
+        println!("Pieces total: {}", pieces_total);
+
+        (0..=pieces_total).map(move |piece_index| {
+
+            let length = if piece_index < pieces_total {
+                SIXTEEN_KIBIBYTES
+            } else {
+
+                self.length as u64 - ((pieces_total) as u64 * SIXTEEN_KIBIBYTES)
+            };
+            PieceInfo {
+                index: piece_index as u32,
+                begin_bytes_offset: piece_index as u32 * SIXTEEN_KIBIBYTES as u32,
+                length_bytes: length as u32,
+            }
+        })
+    }
 }

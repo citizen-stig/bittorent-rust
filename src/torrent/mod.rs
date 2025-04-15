@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+
+pub const SIXTEEN_KIBIBYTES: u64 = 16 * 1024;
 pub mod meta;
 pub mod network;
 
