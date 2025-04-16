@@ -59,22 +59,38 @@ pub struct MetaInfo {
 
 impl MetaInfo {
     pub fn as_piece_infos(&self) -> impl Iterator<Item = PieceInfo> + '_ {
-        let pieces_total = self.length / SIXTEEN_KIBIBYTES as usize;
-        println!("Pieces total: {}", pieces_total);
+        let piece_length = self.piece_length as u64;
+        let block_size = SIXTEEN_KIBIBYTES;
 
-        (0..=pieces_total).map(move |piece_index| {
+        let num_pieces = (self.length as u64 + piece_length - 1) / piece_length;
 
-            let length = if piece_index < pieces_total {
-                SIXTEEN_KIBIBYTES
+        let mut requests = Vec::new();
+
+        for piece_idx in 0..num_pieces {
+            let piece_size = if piece_idx == num_pieces - 1 {
+                self.length as u64 - (piece_idx * piece_length)
             } else {
-
-                self.length as u64 - ((pieces_total) as u64 * SIXTEEN_KIBIBYTES)
+                piece_length
             };
-            PieceInfo {
-                index: piece_index as u32,
-                begin_bytes_offset: piece_index as u32 * SIXTEEN_KIBIBYTES as u32,
-                length_bytes: length as u32,
+
+            let num_blocks = (piece_size + block_size - 1) / block_size;
+
+            for block_idx in 0..num_blocks {
+                let begin_offset = block_idx * block_size;
+                let block_length = if block_idx == num_blocks - 1 {
+                    piece_size - (block_idx * block_size)
+                } else {
+                    block_size
+                };
+
+                requests.push(PieceInfo {
+                    index: piece_idx as u32,
+                    begin_bytes_offset: begin_offset as u32,
+                    length_bytes: block_length as u32,
+                });
             }
-        })
+        }
+
+        requests.into_iter()
     }
 }
