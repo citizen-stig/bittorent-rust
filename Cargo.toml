@@ -13,6 +13,8 @@ sha1 = "0.10.6"
 serde_bytes = "0.11.17"
 reqwest = { version = "0.12.15", features = ["blocking"] }
 percent-encoding = "2.3.1"
+hex = { version = "0.4.3" }
+byteorder = { version = "1.5.0"}
 
 [dev-dependencies]
 proptest = "1.6.0"

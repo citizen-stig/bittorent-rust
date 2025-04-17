@@ -1,42 +1,18 @@
 #![allow(dead_code)]
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub struct TorrentFile {
-    // TODO: How to do `& str`
-    announce: String,
-    // comment: &'a str,
-    info: MetaInfo,
-}
 
-#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct MetaInfo {
-    length: usize,
-    name: String,
-    //
-    #[serde(rename = "piece length")]
-    piece_length: usize,
-    // pieces: &'a [u8],
-    #[serde(with = "serde_bytes")]
-    pieces: Vec<u8>,
-}
-
-#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct TrackerResponse {
-    interval: u64,
-    #[serde(with = "serde_bytes")]
-    peers: Vec<u8>,
-    complete: u64,
-    incomplete: u64,
-}
+pub const SIXTEEN_KIBIBYTES: u64 = 16 * 1024;
+pub mod meta;
+pub mod network;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::bencode::{to_bencode, BencodeDeserializer};
+    use meta::TorrentFile;
     use percent_encoding::{percent_encode, NON_ALPHANUMERIC};
     use serde::Deserialize;
     use sha1::Digest;
-    use std::net::{Ipv4Addr, SocketAddrV4};
     use std::path::Path;
 
     #[test]
@@ -73,7 +49,7 @@ mod tests {
             println!("{}", hex::encode(piece));
         }
 
-        // Perform a simple GET request to the `announce` URL with a `a=10` query parameter
+        // Perform a simple GET request to the `announce` URL with the `a=10` query parameter
         let client = reqwest::blocking::Client::new();
         let info_hash_encoded = percent_encode(&hash[..], NON_ALPHANUMERIC).to_string();
         println!("Info Hash: {}", info_hash_encoded);
@@ -97,19 +73,19 @@ mod tests {
         // println!("Response Body: {}", response.text().unwrap());
 
         let response_bytes = response.bytes().unwrap();
-        let mut deserializer = BencodeDeserializer::new(response_bytes.as_ref());
-        let tracker_response = TrackerResponse::deserialize(&mut deserializer)
-            .expect("Failed to deserialize tracker response");
-        println!("Interval: {}", tracker_response.interval);
-        println!("Peers: {}", tracker_response.peers.len());
-        println!("Complete: {}", tracker_response.complete);
-        println!("Incomplete: {}", tracker_response.incomplete);
-        for chunk in tracker_response.peers.chunks(6) {
-            let octets: [u8; 4] = chunk[0..4].try_into().unwrap();
-            let port: [u8; 2] = chunk[4..6].try_into().unwrap();
-            let port: u16 = u16::from_be_bytes(port);
-            let ip_address = Ipv4Addr::from(octets);
-            println!("IP: {}:{}", ip_address, port);
-        }
+        let _deserializer = BencodeDeserializer::new(response_bytes.as_ref());
+        // let tracker_response = RawTrackerResponse::deserialize(&mut deserializer)
+        //     .expect("Failed to deserialize tracker response");
+        // println!("Interval: {}", tracker_response.interval);
+        // println!("Peers: {}", tracker_response.peers.len());
+        // println!("Complete: {}", tracker_response.complete);
+        // println!("Incomplete: {}", tracker_response.incomplete);
+        // for chunk in tracker_response.peers.chunks(6) {
+        //     let octets: [u8; 4] = chunk[0..4].try_into().unwrap();
+        //     let port: [u8; 2] = chunk[4..6].try_into().unwrap();
+        //     let port: u16 = u16::from_be_bytes(port);
+        //     let ip_address = Ipv4Addr::from(octets);
+        //     println!("IP: {}:{}", ip_address, port);
+        // }
     }
 }
