@@ -207,9 +207,7 @@ impl PeerMessage {
     }
 
     pub fn from_reader(mut reader: impl Read) -> std::io::Result<Self> {
-        println!("FROM READER START");
         let length = reader.read_u32::<BigEndian>()?;
-        println!("FROM READER. LEN={}", length);
 
         if length == 0 {
             return Err(std::io::Error::new(
@@ -220,7 +218,6 @@ impl PeerMessage {
 
         let message_type = PeerMessageType::try_from(reader.read_u8()?)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        println!("Message type: {:?}", message_type);
         // Subtract message ID byte
         let mut payload = vec![0u8; (length - 1) as usize];
         reader.read_exact(&mut payload)?;
@@ -246,7 +243,7 @@ impl PeerMessage {
                 let mut header = std::io::Cursor::new(&payload[..8]);
                 let index = header.read_u32::<BigEndian>()?;
                 let begin_bytes_offset = header.read_u32::<BigEndian>()?;
-                let piece_data = payload[13..64].to_vec();
+                let piece_data = payload[8..].to_vec();
                 PeerMessage::Piece(index, begin_bytes_offset, piece_data)
             }
             PeerMessageType::Cancel => unimplemented!("Cancel to be implemented"),

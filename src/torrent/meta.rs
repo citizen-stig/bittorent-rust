@@ -64,18 +64,17 @@ impl MetaInfo {
 
         let num_pieces = (self.length as u64 + piece_length - 1) / piece_length;
 
-        let mut requests = Vec::new();
-
-        for piece_idx in 0..num_pieces {
-            let piece_size = if piece_idx == num_pieces - 1 {
-                self.length as u64 - (piece_idx * piece_length)
+        (0..num_pieces).flat_map(move |piece_index| {
+            let piece_size = if piece_index == num_pieces - 1 {
+                self.length as u64 - (piece_index * piece_length)
             } else {
                 piece_length
             };
 
             let num_blocks = (piece_size + block_size - 1) / block_size;
 
-            for block_idx in 0..num_blocks {
+            // For each piece, create an iterator over block indices
+            (0..num_blocks).map(move |block_idx| {
                 let begin_offset = block_idx * block_size;
                 let block_length = if block_idx == num_blocks - 1 {
                     piece_size - (block_idx * block_size)
@@ -83,14 +82,12 @@ impl MetaInfo {
                     block_size
                 };
 
-                requests.push(PieceInfo {
-                    index: piece_idx as u32,
+                PieceInfo {
+                    index: piece_index as u32,
                     begin_bytes_offset: begin_offset as u32,
                     length_bytes: block_length as u32,
-                });
-            }
-        }
-
-        requests.into_iter()
+                }
+            })
+        })
     }
 }

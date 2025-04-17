@@ -1,4 +1,5 @@
 use crate::torrent::network::{PeerClient, PeerMessage};
+use sha1::{Digest, Sha1};
 
 mod bencode;
 mod torrent;
@@ -34,10 +35,27 @@ fn main() {
     println!("SENT MESSAGE 1: {:?}", PeerMessage::Interested);
     let msg_2 = peer_client.read_message();
     println!("RECEIVED MESSAGE 2: {:?}", msg_2);
+    let mut pieces: Vec<Vec<u8>> = vec![Vec::new()];
+    let mut current_index = 0;
     for piece_info in torrent_file.info.as_piece_infos() {
         println!("Piece info: {:?}", piece_info);
+        if piece_info.index != current_index {
+            current_index += 1;
+            pieces.push(Vec::new());
+        }
         peer_client.send_message(PeerMessage::Request(piece_info));
         let msg_l = peer_client.read_message();
-        println!("RECEIVED MESSAGE L: {:?}", msg_l);
+        if let PeerMessage::Piece(i, j, data) = msg_l {
+            println!("Piece {} {}: {}", i, j, data.len());
+            pieces[current_index as usize].extend(data);
+        }
+    }
+
+    for (info_hash_piece, piece) in torrent_file.info.pieces.chunks(20).zip(pieces.iter()) {
+        let mut hasher = Sha1::new();
+        hasher.update(&piece);
+        let hash = hasher.finalize();
+        println!("Piece hash A: {}", hex::encode(info_hash_piece));
+        println!("Piece hash B: {}", hex::encode(hash));
     }
 }
