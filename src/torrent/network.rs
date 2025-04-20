@@ -4,7 +4,6 @@ use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use percent_encoding::{percent_encode, NON_ALPHANUMERIC};
 use serde::Deserialize;
 use std::io::{Read, Write};
-use std::net::{Ipv4Addr, SocketAddrV4};
 
 const PEER_ID: &'static [u8; 20] = b"-GT0001-NGO456789012";
 
@@ -76,8 +75,8 @@ impl From<RawTrackerResponse> for TrackerResponse {
             let octets: [u8; 4] = chunk[0..4].try_into().unwrap();
             let port: [u8; 2] = chunk[4..6].try_into().unwrap();
             let port: u16 = u16::from_be_bytes(port);
-            let ip_address = Ipv4Addr::from(octets);
-            peers.push(SocketAddrV4::new(ip_address, port));
+            let ip_address = std::net::Ipv4Addr::from(octets);
+            peers.push(std::net::SocketAddrV4::new(ip_address, port));
         }
         let interval = std::time::Duration::from_secs(tracker_response.interval);
 
@@ -95,7 +94,7 @@ pub struct PeerClient {
 }
 
 impl PeerClient {
-    pub fn new(peer: SocketAddrV4, info_hash: [u8; 20]) -> Self {
+    pub fn new(peer: std::net::SocketAddrV4, info_hash: [u8; 20]) -> Self {
         let mut stream = std::net::TcpStream::connect(peer).expect("Failed to connect to peer");
         let mut handshake = [0; 68];
         handshake[0] = 19;
@@ -122,6 +121,7 @@ impl PeerClient {
         message.write_to_stream(&mut self.stream).unwrap();
     }
 }
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum PeerMessageType {
@@ -182,7 +182,7 @@ pub enum PeerMessage {
 }
 
 impl PeerMessage {
-    fn write_to_stream(self, mut stream: impl std::io::Write) -> std::io::Result<()> {
+    fn write_to_stream(self, mut stream: impl Write) -> std::io::Result<()> {
         match self {
             PeerMessage::Choke => {}
             PeerMessage::Unchoke => {}
@@ -250,3 +250,6 @@ impl PeerMessage {
         })
     }
 }
+
+
+
