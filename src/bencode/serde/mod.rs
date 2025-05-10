@@ -316,7 +316,7 @@ mod tests {
     where
         T: Serialize,
     {
-        let serializer = to_bencode(&value).expect("Failed to serialize value");
+        let result = to_bencode(&value).expect("Failed to serialize value");
         assert_eq!(result, expected);
     }
 

@@ -22,7 +22,6 @@ mod tests {
         let project_root =
             std::env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR");
         let torrent_path = Path::new(&project_root)
-            .join("torrents")
             .join("sample.torrent");
         // .join("ubuntu-22.04.5-live-server-amd64.iso.torrent");
 
