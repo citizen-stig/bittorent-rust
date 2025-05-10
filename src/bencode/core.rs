@@ -157,21 +157,6 @@ impl<'de> BencodeDeserializer<'de> {
         Ok(&self.input[colon_index + 1..end_index])
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn parse_str(&mut self) -> Result<&'de str, BencodeDeserializationError> {
-        let string_slice = self.parse_bytes()?;
-
-        let s = std::str::from_utf8(string_slice).map_err(|e| {
-            println!("OOOPS: {}", String::from_utf8_lossy(string_slice));
-            BencodeDeserializationError::InvalidString(e)
-        })?;
-        // let s = match std::str::from_utf8(string_slice) {
-        //     Ok(res) => res,
-        //     Err(_e) => "MISSING",
-        // };
-        Ok(s)
-    }
-
     fn get_integer(&mut self) -> Result<Bencode<'de>, BencodeDeserializationError> {
         Ok(Bencode::Integer(self.parse_integer()?))
     }
