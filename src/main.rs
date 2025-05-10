@@ -1,7 +1,7 @@
 use crate::torrent::network::{PeerClient, PeerMessage};
 use sha1::{Digest, Sha1};
 use std::fs::File;
-use std::io::{Write, Seek};
+use std::io::{Seek, Write};
 
 mod bencode;
 mod torrent;
@@ -52,19 +52,29 @@ fn main() {
             pieces[current_index as usize].extend(data);
         }
     }
-    
-    let mut output_file = File::create(torrent_file.info.name).unwrap();
-    output_file.set_len(torrent_file.info.length as u64).unwrap();
 
-    for (piece_index, (info_hash_piece, piece)) in torrent_file.info.pieces.chunks(20).zip(pieces.iter()).enumerate() {
+    let mut output_file = File::create(torrent_file.info.name).unwrap();
+    output_file
+        .set_len(torrent_file.info.length as u64)
+        .unwrap();
+
+    for (piece_index, (info_hash_piece, piece)) in torrent_file
+        .info
+        .pieces
+        .chunks(20)
+        .zip(pieces.iter())
+        .enumerate()
+    {
         let mut hasher = Sha1::new();
-        hasher.update(&piece);
+        hasher.update(piece);
         let hash = hasher.finalize();
         println!("Piece hash A: {}", hex::encode(info_hash_piece));
         println!("Piece hash B: {}", hex::encode(hash));
 
         let offset = piece_index * torrent_file.info.piece_length;
-        output_file.seek(std::io::SeekFrom::Start(offset as u64)).unwrap();
+        output_file
+            .seek(std::io::SeekFrom::Start(offset as u64))
+            .unwrap();
         output_file.write_all(piece).unwrap();
     }
 }

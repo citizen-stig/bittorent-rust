@@ -3,6 +3,16 @@ use crate::bencode::error::BencodeSerializationError;
 use crate::bencode::{BencodeDeserializationError, BencodeDeserializer};
 use serde::de::{DeserializeSeed, Visitor};
 use serde::{forward_to_deserialize_any, Serialize};
+use std::fmt::Display;
+
+impl serde::ser::Error for BencodeSerializationError {
+    fn custom<T>(msg: T) -> Self
+    where
+        T: Display,
+    {
+        BencodeSerializationError::Custom(std::borrow::Cow::Owned(msg.to_string()))
+    }
+}
 
 impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
     type Error = BencodeDeserializationError;
@@ -85,6 +95,15 @@ impl<'de> serde::de::Deserializer<'de> for &mut BencodeDeserializer<'de> {
         V: Visitor<'de>,
     {
         self.deserialize_map(visitor)
+    }
+}
+
+impl serde::de::Error for BencodeDeserializationError {
+    fn custom<T>(msg: T) -> Self
+    where
+        T: Display,
+    {
+        BencodeDeserializationError::Custom(std::borrow::Cow::Owned(msg.to_string()))
     }
 }
 
@@ -216,7 +235,7 @@ impl BencodeMapSerializer {
     }
 
     pub(crate) fn finish(mut self) -> Vec<u8> {
-        self.key_values.sort_unstable_by(|a, b| a.0.1.cmp(&b.0.1));
+        self.key_values.sort_unstable_by(|a, b| a.0 .1.cmp(&b.0 .1));
         let total_len = self
             .key_values
             .iter()

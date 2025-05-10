@@ -5,7 +5,7 @@ use percent_encoding::{percent_encode, NON_ALPHANUMERIC};
 use serde::Deserialize;
 use std::io::{Read, Write};
 
-const PEER_ID: &'static [u8; 20] = b"-GT0001-NGO456789012";
+const PEER_ID: &[u8; 20] = b"-GT0001-NGO456789012";
 
 pub struct TorrentTrackerClient {
     tracker_client: reqwest::blocking::Client,
@@ -101,7 +101,7 @@ impl PeerClient {
         handshake[1..20].copy_from_slice(&b"BitTorrent protocol"[..]);
         handshake[28..48].copy_from_slice(&info_hash);
         handshake[48..68].copy_from_slice(&PEER_ID[..]);
-        println!("Sending bytes : {}", hex::encode(&handshake));
+        println!("Sending bytes : {}", hex::encode(handshake));
         stream
             .write_all(&handshake)
             .expect("Failed to send data to peer");
@@ -250,6 +250,3 @@ impl PeerMessage {
         })
     }
 }
-
-
-

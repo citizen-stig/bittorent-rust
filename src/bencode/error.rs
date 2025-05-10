@@ -1,5 +1,4 @@
 use crate::bencode::core::BencodeType;
-use std::fmt::Display;
 
 #[derive(Debug, PartialEq)]
 pub enum ReceivedBencodeType {
@@ -37,18 +36,7 @@ pub enum BencodeDeserializationError {
     #[error("invalid map key, it should be byt string, but got {actual:?}")]
     InvalidKey { actual: ReceivedBencodeType },
     #[error("custom: {0}")]
-    Custom(&'static str),
-}
-
-// TODO: Move to serde
-impl serde::de::Error for BencodeDeserializationError {
-    fn custom<T>(msg: T) -> Self
-    where
-        T: Display,
-    {
-        println!("DESER ERROR: {}", msg);
-        BencodeDeserializationError::Custom("custom")
-    }
+    Custom(std::borrow::Cow<'static, str>),
 }
 
 #[derive(thiserror::Error, Debug, PartialEq)]
@@ -59,15 +47,5 @@ pub enum BencodeSerializationError {
     #[error("invalid map key, it should be byt string, but got something else")]
     InvalidMapKey,
     #[error("custom: {0}")]
-    Custom(&'static str),
-}
-
-impl serde::ser::Error for BencodeSerializationError {
-    fn custom<T>(msg: T) -> Self
-    where
-        T: Display,
-    {
-        println!("SERIALIZATION ERROR: {}", msg);
-        BencodeSerializationError::Custom("custom")
-    }
+    Custom(std::borrow::Cow<'static, str>),
 }
