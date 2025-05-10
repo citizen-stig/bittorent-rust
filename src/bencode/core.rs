@@ -69,7 +69,10 @@ impl<'de> BencodeDeserializer<'de> {
         Ok(())
     }
 
-    pub(crate) fn check_type(&self, expected: BencodeType) -> Result<(), BencodeDeserializationError> {
+    pub(crate) fn check_type(
+        &self,
+        expected: BencodeType,
+    ) -> Result<(), BencodeDeserializationError> {
         let recovered_type = BencodeType::from_byte(self.input[self.pos]);
 
         if recovered_type.as_ref() != Some(&expected) {
@@ -107,7 +110,9 @@ impl<'de> BencodeDeserializer<'de> {
                 break;
             }
             if !self.input[end_pos].is_ascii_digit() {
-                return Err(BencodeDeserializationError::InvalidInteger(self.input[end_pos].into()));
+                return Err(BencodeDeserializationError::InvalidInteger(
+                    self.input[end_pos].into(),
+                ));
             }
             end_pos += 1;
         }
@@ -167,17 +172,14 @@ impl<'de> BencodeDeserializer<'de> {
         Ok(s)
     }
 
-    #[allow(dead_code)]
     fn get_integer(&mut self) -> Result<Bencode<'de>, BencodeDeserializationError> {
         Ok(Bencode::Integer(self.parse_integer()?))
     }
 
-    #[allow(dead_code)]
     fn get_bytes(&mut self) -> Result<Bencode<'de>, BencodeDeserializationError> {
         Ok(Bencode::Bytes(self.parse_bytes()?))
     }
 
-    #[allow(dead_code)]
     fn get_any(&mut self) -> Result<Bencode<'de>, BencodeDeserializationError> {
         match self.input.get(self.pos) {
             None => Err(BencodeDeserializationError::UnexpectedEof),
@@ -290,7 +292,10 @@ mod tests {
                 &b"i-e"[..],
                 BencodeDeserializationError::CannotParseInteger(invalid_digit_err.clone()),
             ),
-            (&b"i000500e"[..], BencodeDeserializationError::InvalidIntegerLeadingZero),
+            (
+                &b"i000500e"[..],
+                BencodeDeserializationError::InvalidIntegerLeadingZero,
+            ),
             (&b"i-"[..], BencodeDeserializationError::UnexpectedEof),
             (&b"i-0"[..], BencodeDeserializationError::UnexpectedEof),
             (&b"i1"[..], BencodeDeserializationError::UnexpectedEof),
@@ -339,7 +344,10 @@ mod tests {
             (&b"2:a"[..], BencodeDeserializationError::UnexpectedEof),
             (&b"1:"[..], BencodeDeserializationError::UnexpectedEof),
             (&b"-1:a"[..], BencodeDeserializationError::InvalidLen('-')),
-            (&b"2aa"[..], BencodeDeserializationError::LenSeparatorMissing),
+            (
+                &b"2aa"[..],
+                BencodeDeserializationError::LenSeparatorMissing,
+            ),
         ];
 
         for (data, expected_error) in cases {

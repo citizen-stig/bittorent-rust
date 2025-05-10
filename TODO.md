@@ -6,8 +6,7 @@
   + dict
   - Try `serde_json` with vetted values to verify
   - Map only string keys
-  - Proper struct deserialization
-  - 
+  + Proper struct deserialization
   - json based mixed values
  ~ Parsing torrent files
   - Change how strings are parsed: convert base parsing to be bytes, and then string attempts from it!

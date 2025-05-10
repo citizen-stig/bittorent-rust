@@ -62,7 +62,7 @@ impl MetaInfo {
         let piece_length = self.piece_length as u64;
         let block_size = SIXTEEN_KIBIBYTES;
 
-        let num_pieces = (self.length as u64 + piece_length - 1) / piece_length;
+        let num_pieces = (self.length as u64).div_ceil(piece_length);
 
         (0..num_pieces).flat_map(move |piece_index| {
             let piece_size = if piece_index == num_pieces - 1 {
@@ -71,7 +71,7 @@ impl MetaInfo {
                 piece_length
             };
 
-            let num_blocks = (piece_size + block_size - 1) / block_size;
+            let num_blocks = piece_size.div_ceil(block_size);
 
             // For each piece, create an iterator over block indices
             (0..num_blocks).map(move |block_idx| {
