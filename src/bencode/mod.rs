@@ -2,13 +2,12 @@
 //!
 
 mod core;
-// mod deser;
 mod error;
-mod deser;
+mod serde;
 
 pub use crate::bencode::core::BencodeDeserializer;
 pub use crate::bencode::error::BencodeDeserializationError;
-pub use deser::to_bencode;
+pub use crate::bencode::serde::to_bencode;
 
 #[cfg(test)]
 mod tests {

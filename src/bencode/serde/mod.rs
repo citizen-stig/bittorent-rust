@@ -270,7 +270,7 @@ impl serde::Serializer for KeySerializer {
     type SerializeMap = serde::ser::Impossible<PreSerializeKey, BencodeSerializationError>;
     type SerializeStruct = serde::ser::Impossible<PreSerializeKey, BencodeSerializationError>;
     type SerializeStructVariant =
-        serde::ser::Impossible<PreSerializeKey, BencodeSerializationError>;
+    serde::ser::Impossible<PreSerializeKey, BencodeSerializationError>;
 
     // Everything else errors out explicitly
     fn serialize_bool(self, _: bool) -> Result<Self::Ok, Self::Error> {
